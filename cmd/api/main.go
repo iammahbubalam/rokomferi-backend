@@ -13,6 +13,7 @@ import (
 	"rokomferi-backend/internal/repository/postgres"
 	"rokomferi-backend/internal/usecase"
 	postgresPkg "rokomferi-backend/pkg/postgres"
+	"rokomferi-backend/pkg/storage"
 	"rokomferi-backend/pkg/utils"
 	"syscall"
 	"time"
@@ -47,11 +48,25 @@ func main() {
 	authUC := usecase.NewAuthUsecase(
 		userRepo,
 		cfg.GoogleClientID,
+		cfg.GoogleClientSecret,
 		cfg.GoogleTokenInfoURL,
 		cfg.AccessTokenExpiry,
 		cfg.RefreshTokenExpiry,
 	)
 	authHandler := v1.NewAuthHandler(authUC)
+
+	// --- Storage Module (R2) ---
+	r2Storage, err := storage.NewR2Storage(
+		cfg.R2AccountID,
+		cfg.R2AccessKeyID,
+		cfg.R2AccessKeySecret,
+		cfg.R2BucketName,
+		cfg.R2PublicURL,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize R2 Storage: %v", err)
+	}
+	uploadHandler := v1.NewUploadHandler(r2Storage)
 
 	// 2. Catalog Module
 	productRepo := postgres.NewProductRepository(db)
@@ -79,6 +94,9 @@ func main() {
 	// User Profile / Address
 	mux.Handle("POST /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.AddAddress)))
 	mux.Handle("GET /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.GetAddresses)))
+
+	// Uploads
+	mux.Handle("POST /api/v1/upload", middleware.AuthMiddleware(http.HandlerFunc(uploadHandler.UploadFile)))
 
 	// Catalog (Public)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)

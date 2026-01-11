@@ -6,23 +6,27 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
+	"strings"
 	"time"
 )
 
 type AuthUsecase struct {
 	userRepo           domain.UserRepository
 	clientID           string
+	clientSecret       string
 	tokenInfoURL       string
 	accessTokenExpiry  time.Duration
 	refreshTokenExpiry time.Duration
 }
 
-func NewAuthUsecase(userRepo domain.UserRepository, clientID, tokenInfoURL string, atExpiry, rtExpiry time.Duration) *AuthUsecase {
+func NewAuthUsecase(userRepo domain.UserRepository, clientID, clientSecret, tokenInfoURL string, atExpiry, rtExpiry time.Duration) *AuthUsecase {
 	return &AuthUsecase{
 		userRepo:           userRepo,
 		clientID:           clientID,
+		clientSecret:       clientSecret,
 		tokenInfoURL:       tokenInfoURL,
 		accessTokenExpiry:  atExpiry,
 		refreshTokenExpiry: rtExpiry,
@@ -40,19 +44,25 @@ type GoogleUser struct {
 	Aud           string      `json:"aud"`
 }
 
-func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (string, string, *domain.User, error) {
-	slog.Info("Authenticating with Google", "token_length", len(idToken))
-	// 1. Verify Google Token manually
-	userInfo, err := u.verifyGoogleToken(idToken)
+func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, code string) (string, string, *domain.User, error) {
+	slog.Info("Authenticating with Google via Code Flow", "code_length", len(code))
+
+	// 1. Exchange Code for Tokens
+	googleTokens, err := u.exchangeCodeForToken(code)
 	if err != nil {
-		slog.Error("Google token verification failed", "error", err)
-		return "", "", nil, fmt.Errorf("invalid google token: %v", err)
+		slog.Error("Google code exchange failed", "error", err)
+		return "", "", nil, fmt.Errorf("google code exchange failed: %v", err)
 	}
 
-	// In production, verify Audience matches Client ID
-	if userInfo.Aud != u.clientID {
-		return "", "", nil, fmt.Errorf("token audience mismatch: expected %s, got %s", u.clientID, userInfo.Aud)
+	// 2. Fetch User Info using Access Token
+	userInfo, err := u.fetchGoogleUserInfo(googleTokens.AccessToken)
+	if err != nil {
+		slog.Error("Failed to fetch google user info", "error", err)
+		return "", "", nil, fmt.Errorf("failed to fetch user info: %v", err)
 	}
+
+	// In production, verify Audience matches Client ID if returned in ID Token
+	// (googleTokens.IDToken can be parsed, but UserInfo endpoint is also authoritative source for this flow)
 
 	// 2. Find or Create User
 	user, err := u.userRepo.GetByEmail(ctx, userInfo.Email)
@@ -77,6 +87,16 @@ func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (s
 		}
 	} else {
 		slog.Info("Existing user found", "user_id", user.ID)
+		// Sync Profile Data from Google (in case it changed)
+		user.FirstName = userInfo.GivenName
+		user.LastName = userInfo.FamilyName
+		user.Avatar = userInfo.Picture
+		// Ensure Role doesn't get overwritten unless we want to logic it
+
+		if err := u.userRepo.Update(ctx, user); err != nil {
+			slog.Error("Failed to update user profile", "error", err)
+			// Non-critical error, continue login
+		}
 	}
 
 	// 3. Generate Access Token (JWT)
@@ -157,27 +177,62 @@ func (u *AuthUsecase) GetAddresses(ctx context.Context, userID string) ([]domain
 	return u.userRepo.GetAddresses(ctx, userID)
 }
 
-func (u *AuthUsecase) verifyGoogleToken(token string) (*GoogleUser, error) {
-	// We use access_token because frontend useGoogleLogin returns access_token by default for custom buttons.
-	url := fmt.Sprintf(u.tokenInfoURL, token)
-	resp, err := http.Get(url)
+type GoogleTokens struct {
+	AccessToken  string `json:"access_token"`
+	IDToken      string `json:"id_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"` // Only if access_type=offline
+}
+
+func (u *AuthUsecase) exchangeCodeForToken(code string) (*GoogleTokens, error) {
+	// https://oauth2.googleapis.com/token
+	data := url.Values{}
+	data.Set("code", code)
+	data.Set("client_id", u.clientID)
+	data.Set("client_secret", u.clientSecret)
+	data.Set("redirect_uri", "postmessage") // Important for React Google Login 'auth-code' flow
+	data.Set("grant_type", "authorization_code")
+
+	req, _ := http.NewRequest("POST", "https://oauth2.googleapis.com/token", strings.NewReader(data.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		slog.Error("Google API returned error", "status", resp.StatusCode)
-		return nil, fmt.Errorf("google api returned status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("google token endpoint returned status: %d", resp.StatusCode)
+	}
+
+	var tokens GoogleTokens
+	if err := json.NewDecoder(resp.Body).Decode(&tokens); err != nil {
+		return nil, err
+	}
+	return &tokens, nil
+}
+
+func (u *AuthUsecase) fetchGoogleUserInfo(accessToken string) (*GoogleUser, error) {
+	req, _ := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("google userinfo returned status: %d", resp.StatusCode)
 	}
 
 	var gUser GoogleUser
 	if err := json.NewDecoder(resp.Body).Decode(&gUser); err != nil {
-		slog.Error("Failed to decode Google user info", "error", err)
 		return nil, err
 	}
-	slog.Info("Google token verified successfully", "email", gUser.Email)
-
 	return &gUser, nil
 }
 

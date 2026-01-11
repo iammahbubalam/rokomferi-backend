@@ -23,7 +23,7 @@ type googleLoginReq struct {
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info("GoogleLogin request received")
 	var req struct {
-		IDToken string `json:"idToken"`
+		Code string `json:"code"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -32,7 +32,7 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Updated call to AuthenticateGoogle
-	accessToken, refreshToken, user, err := h.authUC.AuthenticateGoogle(r.Context(), req.IDToken)
+	accessToken, refreshToken, user, err := h.authUC.AuthenticateGoogle(r.Context(), req.Code)
 	if err != nil {
 		slog.Error("Authentication failed", "error", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
