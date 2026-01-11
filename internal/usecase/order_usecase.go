@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"rokomferi-backend/internal/domain"
 	"time"
 )
@@ -10,12 +11,14 @@ import (
 type OrderUsecase struct {
 	orderRepo   domain.OrderRepository
 	productRepo domain.ProductRepository
+	txManager   domain.TransactionManager
 }
 
-func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository) *OrderUsecase {
+func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, txManager domain.TransactionManager) *OrderUsecase {
 	return &OrderUsecase{
 		orderRepo:   repo,
 		productRepo: pRepo,
+		txManager:   txManager,
 	}
 }
 
@@ -93,21 +96,26 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		return nil, fmt.Errorf("cart is empty")
 	}
 
-	// Calculate Total
+	// Calculate Total with FRESH prices and check Stock
 	var total float64
 	var orderItems []domain.OrderItem
 
 	for _, item := range cart.Items {
-		// Ideally fetch latest price from DB here to prevent tampering.
-		// For MVP, we trust the preload or fetch again.
-		// Let's assume item.Product has price.
-		// Wait, Product might not be loaded with price in Cart Items if not preloaded correctly.
-		// We should really fetch the product price here.
+		// Re-fetch product to ensure price/stock is up-to-date.
+		// relying on Cart's cached "Product" might be unsafe if price changed since add-to-cart.
+		product, err := u.productRepo.GetProductByID(ctx, item.ProductID)
+		if err != nil {
+			return nil, fmt.Errorf("product %s not found: %v", item.ProductID, err)
+		}
 
-		// MVP Shortcut: We assume 1000 for everything if 0, but CartRepo preloads "Product".
-		price := item.Product.BasePrice
-		if item.Product.SalePrice != nil {
-			price = *item.Product.SalePrice
+		if product.StockStatus == "out_of_stock" {
+			return nil, fmt.Errorf("product %s is out of stock", product.Name)
+		}
+
+		// Determine price (Sale vs Base)
+		price := product.BasePrice
+		if product.SalePrice != nil {
+			price = *product.SalePrice
 		}
 
 		total += price * float64(item.Quantity)
@@ -130,14 +138,27 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		Items:           orderItems,
 	}
 
-	if err := u.orderRepo.CreateOrder(ctx, order); err != nil {
+	// Wrap Order Creation and Cart Clearing in Transaction
+	err = u.txManager.Do(ctx, func(txCtx context.Context) error {
+		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
+			return fmt.Errorf("failed to create order: %v", err)
+		}
+
+		if err := u.orderRepo.ClearCart(txCtx, cart.ID); err != nil {
+			return fmt.Errorf("failed to clear cart: %v", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		slog.Error("Checkout transaction failed", "error", err)
 		return nil, err
 	}
 
-	// Clear Cart
-	if err := u.orderRepo.ClearCart(ctx, cart.ID); err != nil {
-		// Log error but order is placed
-	}
-
 	return order, nil
+}
+
+func (u *OrderUsecase) GetMyOrders(ctx context.Context, userID string) ([]domain.Order, error) {
+	return u.orderRepo.GetOrdersByUserID(ctx, userID)
 }

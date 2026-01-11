@@ -68,3 +68,14 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(order)
 }
+
+func (h *OrderHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(string)
+	orders, err := h.orderUC.GetMyOrders(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch orders", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(orders)
+}

@@ -12,6 +12,7 @@ type Config struct {
 	Env            string
 	DBUrl          string
 	GoogleClientID string
+	JWTSecret      string
 }
 
 func LoadConfig() *Config {
@@ -25,6 +26,7 @@ func LoadConfig() *Config {
 		Env:            getEnv("ENV", "development"),
 		DBUrl:          getEnv("DB_DSN", ""),
 		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
+		JWTSecret:      getEnv("JWT_SECRET", "default_secret_CHANGE_ME"),
 	}
 }
 

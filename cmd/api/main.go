@@ -1,19 +1,26 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"rokomferi-backend/config"
 	"rokomferi-backend/internal/delivery/http/middleware"
 	v1 "rokomferi-backend/internal/delivery/http/v1"
 	"rokomferi-backend/internal/repository/postgres"
 	"rokomferi-backend/internal/usecase"
 	postgresPkg "rokomferi-backend/pkg/postgres"
+	"rokomferi-backend/pkg/utils"
+	"syscall"
+	"time"
 )
 
 func main() {
 	cfg := config.LoadConfig()
+	utils.SetSecret(cfg.JWTSecret)
 
 	// Initialize Database
 	db, err := postgresPkg.NewClient(cfg.DBUrl)
@@ -47,7 +54,8 @@ func main() {
 
 	// 3. Order Module
 	orderRepo := postgres.NewOrderRepository(db)
-	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo)
+	txManager := postgres.NewTransactionManager(db)
+	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, txManager)
 	orderHandler := v1.NewOrderHandler(orderUC)
 
 	// --- Routes ---
@@ -66,6 +74,7 @@ func main() {
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
+	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 
 	// Health Check
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +89,33 @@ func main() {
 	// Apply CORS
 	handler := middleware.CORS(mux)
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: handler,
 	}
+
+	// Graceful Shutdown
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	log.Printf("Server starting on %s", addr)
+
+	// Wait for interrupt signal via channel
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Server shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited properly")
 }

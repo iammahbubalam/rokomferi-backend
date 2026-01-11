@@ -7,9 +7,22 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var SecretKey = []byte("SUPER_SECRET_KEY_CHANGE_IN_PROD") // Should be env var
+// SecretKey should be passed from config, not global
+// But to keep signature simple for this refactor without breaking unrelated calls:
+// We will set it via a Setup function or pass it in.
+// A cleaner way for "Production": Pass config to Usecase, Usecase calls TokenGenerator.
+// For now, let's export a Setup function.
+
+var secretKey []byte
+
+func SetSecret(key string) {
+	secretKey = []byte(key)
+}
 
 func GenerateJWT(userID, email, role string) (string, error) {
+	if len(secretKey) == 0 {
+		return "", fmt.Errorf("jwt secret not set")
+	}
 	claims := jwt.MapClaims{
 		"sub":   userID,
 		"email": email,
@@ -18,7 +31,7 @@ func GenerateJWT(userID, email, role string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(SecretKey)
+	return token.SignedString(secretKey)
 }
 
 func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
@@ -26,7 +39,7 @@ func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return SecretKey, nil
+		return secretKey, nil
 	})
 
 	if err != nil {

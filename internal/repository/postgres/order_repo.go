@@ -20,7 +20,7 @@ func NewOrderRepository(db *gorm.DB) domain.OrderRepository {
 
 func (r *orderRepository) GetCartByUserID(ctx context.Context, userID string) (*domain.Cart, error) {
 	var cart domain.Cart
-	err := r.db.WithContext(ctx).
+	err := getDB(ctx, r.db).
 		Preload("Items").
 		Preload("Items.Product").
 		Where("user_id = ?", userID).
@@ -35,24 +35,24 @@ func (r *orderRepository) GetCartByUserID(ctx context.Context, userID string) (*
 }
 
 func (r *orderRepository) CreateCart(ctx context.Context, cart *domain.Cart) error {
-	return r.db.WithContext(ctx).Create(cart).Error
+	return getDB(ctx, r.db).Create(cart).Error
 }
 
 func (r *orderRepository) UpdateCart(ctx context.Context, cart *domain.Cart) error {
 	// This simple implementation saves the cart and its items.
 	// For full sync, we might need to delete old items or handle merge logic.
 	// Here we assume "cart" passed in has the Latest State of items.
-	return r.db.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: true}).Save(cart).Error
+	return getDB(ctx, r.db).Session(&gorm.Session{FullSaveAssociations: true}).Save(cart).Error
 }
 
 func (r *orderRepository) ClearCart(ctx context.Context, cartID string) error {
-	return r.db.WithContext(ctx).Where("cart_id = ?", cartID).Delete(&domain.CartItem{}).Error
+	return getDB(ctx, r.db).Where("cart_id = ?", cartID).Delete(&domain.CartItem{}).Error
 }
 
 // --- Order Implementation ---
 
 func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) error {
-	return r.db.WithContext(ctx).Create(order).Error
+	return getDB(ctx, r.db).Create(order).Error
 }
 
 func (r *orderRepository) GetOrderByID(ctx context.Context, id string) (*domain.Order, error) {

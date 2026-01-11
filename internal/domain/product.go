@@ -8,7 +8,11 @@ import (
 	"time"
 )
 
-// --- Entities ---
+// --- Interfaces ---
+
+type TransactionManager interface {
+	Do(ctx context.Context, fn func(ctx context.Context) error) error
+}
 
 type Category struct {
 	ID       string     `json:"id" gorm:"primaryKey"` // cat_women
