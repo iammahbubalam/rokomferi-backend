@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"rokomferi-backend/internal/domain"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -12,7 +14,7 @@ type productRepository struct {
 }
 
 func NewProductRepository(db *gorm.DB) domain.ProductRepository {
-	db.AutoMigrate(&domain.Category{}, &domain.Product{}, &domain.Variant{})
+	db.AutoMigrate(&domain.Category{}, &domain.Product{}, &domain.Variant{}, &domain.InventoryLog{})
 	return &productRepository{db: db}
 }
 
@@ -66,15 +68,60 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 	}
 
 	// Pagination
-	if filter.Limit > 0 {
-		query = query.Limit(filter.Limit).Offset(filter.Offset)
+	if filter.Limit <= 0 {
+		filter.Limit = 20
 	}
+	if filter.Limit > 100 {
+		filter.Limit = 100 // Enforce hard limit
+	}
+	query = query.Limit(filter.Limit).Offset(filter.Offset)
 
 	if err := query.Find(&products).Error; err != nil {
 		return nil, 0, err
 	}
 
 	return products, total, nil
+}
+
+// UpdateStock manages inventory with a strict Audit Log.
+func (r *productRepository) UpdateStock(ctx context.Context, productID string, quantity int, reason, referenceID string) error {
+	db := getDB(ctx, r.db)
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 1. Update Product Stock
+		// If deducting (negative quantity), ensure we don't go below 0
+		var result *gorm.DB
+		if quantity < 0 {
+			result = tx.Model(&domain.Product{}).
+				Where("id = ? AND stock >= ?", productID, -quantity).
+				UpdateColumn("stock", gorm.Expr("stock + ?", quantity))
+		} else {
+			result = tx.Model(&domain.Product{}).
+				Where("id = ?", productID).
+				UpdateColumn("stock", gorm.Expr("stock + ?", quantity))
+		}
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("insufficient stock or product not found: %s", productID)
+		}
+
+		// 2. Create Audit Log
+		logEntry := domain.InventoryLog{
+			ProductID:    productID,
+			ChangeAmount: quantity,
+			Reason:       reason,
+			ReferenceID:  referenceID,
+			CreatedAt:    time.Now(),
+		}
+		if err := tx.Create(&logEntry).Error; err != nil {
+			return fmt.Errorf("failed to create inventory log: %v", err)
+		}
+
+		return nil
+	})
 }
 
 func (r *productRepository) GetProductBySlug(ctx context.Context, slug string) (*domain.Product, error) {
@@ -99,4 +146,26 @@ func (r *productRepository) GetProductByID(ctx context.Context, id string) (*dom
 		return nil, err
 	}
 	return &product, nil
+}
+
+// --- Admin Implementation ---
+
+func (r *productRepository) CreateProduct(ctx context.Context, product *domain.Product) error {
+	return r.db.WithContext(ctx).Create(product).Error
+}
+
+func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.Product) error {
+	// Fix: Use Select to ensure zero values (like IsActive=false) are updated.
+	// We exclude ID, CSV, SKU, Slug, CreatedAt from arbitrary updates here (safety).
+	return r.db.WithContext(ctx).Model(product).
+		Select("Name", "Description", "BasePrice", "SalePrice", "Stock", "StockStatus", "LowStockThreshold", "IsFeatured", "IsActive", "CategoryID", "Media", "Attributes", "Specs", "UpdatedAt").
+		Updates(product).Error
+}
+
+func (r *productRepository) DeleteProduct(ctx context.Context, id string) error {
+	// Soft delete if domain.Product has DeletedAt, otherwise Hard Delete.
+	// Since we defined simple struct, this is Hard Delete unless we add gorm.Model or DeletedAt.
+	// For "Robustness", checking constraints (orders, stock) is Wise.
+	// But standard DELETE for now.
+	return r.db.WithContext(ctx).Delete(&domain.Product{}, "id = ?", id).Error
 }

@@ -84,7 +84,13 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 // --- Address Handlers ---
 
 func (h *AuthHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := user.ID
+
 	var req domain.Address
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
@@ -101,7 +107,13 @@ func (h *AuthHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) GetAddresses(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := user.ID
+
 	addrs, err := h.authUC.GetAddresses(r.Context(), userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -112,19 +124,17 @@ func (h *AuthHandler) GetAddresses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	// Assumes AuthMiddleware has run and set UserID in context
-	// We might need to fetch fresh user data from DB or just return claims
-	// For API needs 2.2, we return ID, Email, Role, Preferences
-
-	userID, ok := r.Context().Value("userID").(string) // Needs to match middleware key type, better to use exported key
+	// Assumes AuthMiddleware has run and set User in context
+	userCtx, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
 	if !ok {
-		// Ideally middleware handles this, but safe check
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	// Delegate to Usecase to get full user profile if needed
-	user, err := h.authUC.GetUserByID(r.Context(), userID)
+	// Or just return the user from context if it has enough info (ID, Email, Role)
+	// But let's fetch full profile to get addresses etc.
+	user, err := h.authUC.GetUserByID(r.Context(), userCtx.ID)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return

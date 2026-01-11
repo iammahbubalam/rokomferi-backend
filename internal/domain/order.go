@@ -61,6 +61,10 @@ type OrderRepository interface {
 
 	// Order
 	CreateOrder(ctx context.Context, order *Order) error
-	GetOrderByID(ctx context.Context, id string) (*Order, error)
-	GetOrdersByUserID(ctx context.Context, userID string) ([]Order, error)
+	GetByID(ctx context.Context, id string) (*Order, error)
+	GetByUserID(ctx context.Context, userID string) ([]Order, error)
+
+	// Admin Methods
+	GetAll(ctx context.Context, page, limit int, status string) ([]Order, int64, error)
+	UpdateStatus(ctx context.Context, id, status string) error
 }

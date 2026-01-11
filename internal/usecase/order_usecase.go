@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"rokomferi-backend/internal/domain"
-	"time"
+	"rokomferi-backend/pkg/utils"
 )
 
 type OrderUsecase struct {
@@ -32,7 +32,7 @@ func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Ca
 	if cart == nil {
 		// Auto-create cart for user if missing
 		cart = &domain.Cart{
-			ID:     fmt.Sprintf("cart_%d_%s", time.Now().Unix(), userID),
+			ID:     utils.GenerateUUID(),
 			UserID: &userID,
 		}
 		if err := u.orderRepo.CreateCart(ctx, cart); err != nil {
@@ -69,7 +69,7 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 	}
 	if !found {
 		newItem := domain.CartItem{
-			ID:        fmt.Sprintf("ci_%d", time.Now().UnixNano()),
+			ID:        utils.GenerateUUID(),
 			CartID:    cart.ID,
 			ProductID: productID,
 			Quantity:  quantity,
@@ -120,7 +120,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 
 		total += price * float64(item.Quantity)
 		orderItems = append(orderItems, domain.OrderItem{
-			ID:        fmt.Sprintf("oi_%d", time.Now().UnixNano()),
+			ID:        utils.GenerateUUID(),
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
 			Price:     price,
@@ -128,7 +128,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 	}
 
 	order := &domain.Order{
-		ID:              fmt.Sprintf("ord_%d", time.Now().Unix()),
+		ID:              utils.GenerateUUID(),
 		UserID:          userID,
 		Status:          "pending",
 		TotalAmount:     total,
@@ -138,12 +138,22 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		Items:           orderItems,
 	}
 
-	// Wrap Order Creation and Cart Clearing in Transaction
+	// Wrap Order Creation, Cart Clearing, and Stock Update in Transaction
 	err = u.txManager.Do(ctx, func(txCtx context.Context) error {
+		// 1. Create Order
 		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
 			return fmt.Errorf("failed to create order: %v", err)
 		}
 
+		// 2. Decrement Stock for each item
+		for _, item := range order.Items {
+			// Decrease stock: pass negative quantity
+			if err := u.productRepo.UpdateStock(txCtx, item.ProductID, -item.Quantity, "order_placed", order.ID); err != nil {
+				return fmt.Errorf("failed to update stock for %s: %v", item.ProductID, err)
+			}
+		}
+
+		// 3. Clear Cart
 		if err := u.orderRepo.ClearCart(txCtx, cart.ID); err != nil {
 			return fmt.Errorf("failed to clear cart: %v", err)
 		}
@@ -160,5 +170,47 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 }
 
 func (u *OrderUsecase) GetMyOrders(ctx context.Context, userID string) ([]domain.Order, error) {
-	return u.orderRepo.GetOrdersByUserID(ctx, userID)
+	return u.orderRepo.GetByUserID(ctx, userID)
+}
+
+// --- Admin Usecase ---
+
+func (u *OrderUsecase) GetAllOrders(ctx context.Context, page, limit int, status string) ([]domain.Order, int64, error) {
+	return u.orderRepo.GetAll(ctx, page, limit, status)
+}
+
+func (u *OrderUsecase) UpdateOrderStatus(ctx context.Context, orderID, newStatus string) error {
+	// 1. Get existing order to check current status and items
+	order, err := u.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Prevent invalid transitions (optional, simple check for now)
+	if order.Status == "cancelled" {
+		return fmt.Errorf("cannot update a cancelled order")
+	}
+
+	// 3. Handle Stock Reconciliation
+	// If we are cancelling, we must RESTOCK.
+	if newStatus == "cancelled" && order.Status != "cancelled" {
+		// Use TransactionManager? ideally yes.
+		return u.txManager.Do(ctx, func(txCtx context.Context) error {
+			// Update Status
+			if err := u.orderRepo.UpdateStatus(txCtx, orderID, newStatus); err != nil {
+				return err
+			}
+			// Restock Items
+			for _, item := range order.Items {
+				// Positive quantity to add back
+				if err := u.productRepo.UpdateStock(txCtx, item.ProductID, item.Quantity, "order_cancelled", orderID); err != nil {
+					return fmt.Errorf("failed to restock %s: %v", item.ProductID, err)
+				}
+			}
+			return nil
+		})
+	}
+
+	// Simple status update for other cases (e.g. processing -> shipped)
+	return u.orderRepo.UpdateStatus(ctx, orderID, newStatus)
 }

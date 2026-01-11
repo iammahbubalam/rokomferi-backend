@@ -3,15 +3,10 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
 	"strings"
 )
-
-type contextKey string
-
-const UserIDKey contextKey = "userID"
-const UserRoleKey contextKey = "userRole"
-const UserEmailKey contextKey = "userEmail"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,10 +35,20 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 3. Set Context
-		ctx := context.WithValue(r.Context(), UserIDKey, claims["sub"])
-		ctx = context.WithValue(ctx, UserEmailKey, claims["email"])
-		ctx = context.WithValue(ctx, UserRoleKey, claims["role"])
+		// We construct a partial user from the token claims to avoid a DB hit on every request.
+		// If strict role checking against DB is needed (e.g. if role changes mid-session),
+		// we would query the DB here. For now, token claims are sufficient.
+		sub, _ := claims["sub"].(string)
+		email, _ := claims["email"].(string)
+		role, _ := claims["role"].(string)
 
+		user := &domain.User{
+			ID:    sub,
+			Email: email,
+			Role:  role,
+		}
+
+		ctx := context.WithValue(r.Context(), domain.UserContextKey, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

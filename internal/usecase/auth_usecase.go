@@ -64,7 +64,7 @@ func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (s
 		slog.Info("Creating new user", "email", userInfo.Email)
 		// Create new user
 		user = &domain.User{
-			ID:        fmt.Sprintf("u_%d", time.Now().UnixNano()), // Simple ID generation
+			ID:        utils.GenerateUUID(),
 			Email:     userInfo.Email,
 			FirstName: userInfo.GivenName,
 			LastName:  userInfo.FamilyName,
@@ -144,7 +144,7 @@ func (u *AuthUsecase) RefreshAccessToken(ctx context.Context, refreshTokenStr st
 func (u *AuthUsecase) AddAddress(ctx context.Context, userID string, req domain.Address) (*domain.Address, error) {
 	// Sanitize UserID
 	req.UserID = userID
-	req.ID = fmt.Sprintf("addr_%d", time.Now().UnixNano())
+	req.ID = utils.GenerateUUID()
 	req.CreatedAt = time.Now()
 
 	if err := u.userRepo.AddAddress(ctx, &req); err != nil {

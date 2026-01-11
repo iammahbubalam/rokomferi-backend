@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"net/http"
+	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
 )
 
@@ -17,8 +18,12 @@ func NewOrderHandler(uc *usecase.OrderUsecase) *OrderHandler {
 // --- Cart Handlers ---
 
 func (h *OrderHandler) GetCart(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
-	cart, err := h.orderUC.GetMyCart(r.Context(), userID)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cart, err := h.orderUC.GetMyCart(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -33,14 +38,18 @@ type addToCartReq struct {
 }
 
 func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	var req addToCartReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	cart, err := h.orderUC.AddToCart(r.Context(), userID, req.ProductID, req.Quantity)
+	cart, err := h.orderUC.AddToCart(r.Context(), user.ID, req.ProductID, req.Quantity)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -52,14 +61,18 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 // --- Order Handlers ---
 
 func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	var req usecase.CheckoutReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	order, err := h.orderUC.Checkout(r.Context(), userID, req)
+	order, err := h.orderUC.Checkout(r.Context(), user.ID, req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError) // 400 if cart empty, 500 otherwise. Simplified for now.
 		return
@@ -70,8 +83,12 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(string)
-	orders, err := h.orderUC.GetMyOrders(r.Context(), userID)
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	orders, err := h.orderUC.GetMyOrders(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, "Failed to fetch orders", http.StatusInternalServerError)
 		return

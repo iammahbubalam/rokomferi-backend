@@ -55,14 +55,52 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 	return getDB(ctx, r.db).Create(order).Error
 }
 
-func (r *orderRepository) GetOrderByID(ctx context.Context, id string) (*domain.Order, error) {
+func (r *orderRepository) GetByID(ctx context.Context, id string) (*domain.Order, error) {
 	var order domain.Order
-	err := r.db.WithContext(ctx).Preload("Items.Product").First(&order, "id = ?", id).Error
-	return &order, err
+	if err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").First(&order, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &order, nil
 }
 
-func (r *orderRepository) GetOrdersByUserID(ctx context.Context, userID string) ([]domain.Order, error) {
+func (r *orderRepository) GetByUserID(ctx context.Context, userID string) ([]domain.Order, error) {
 	var orders []domain.Order
-	err := r.db.WithContext(ctx).Preload("Items").Where("user_id = ?", userID).Order("created_at DESC").Find(&orders).Error
-	return orders, err
+	if err := r.db.WithContext(ctx).Preload("Items").Where("user_id = ?", userID).Order("created_at desc").Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// --- Admin Implementation ---
+
+func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status string) ([]domain.Order, int64, error) {
+	var orders []domain.Order
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&domain.Order{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+	if err := query.Preload("Items").Order("created_at desc").Limit(limit).Offset(offset).Find(&orders).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return orders, total, nil
+}
+
+func (r *orderRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	return r.db.WithContext(ctx).Model(&domain.Order{}).Where("id = ?", id).Update("status", status).Error
 }

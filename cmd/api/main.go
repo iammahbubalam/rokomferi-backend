@@ -58,11 +58,15 @@ func main() {
 	catalogUC := usecase.NewCatalogUsecase(productRepo)
 	catalogHandler := v1.NewCatalogHandler(catalogUC)
 
+	// Admin Catalog Handlers
+	adminCatalogHandler := v1.NewAdminCatalogHandler(catalogUC)
+
 	// 3. Order Module
 	orderRepo := postgres.NewOrderRepository(db)
 	txManager := postgres.NewTransactionManager(db)
 	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, txManager)
 	orderHandler := v1.NewOrderHandler(orderUC)
+	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 
 	// --- Routes ---
 
@@ -76,10 +80,23 @@ func main() {
 	mux.Handle("POST /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.AddAddress)))
 	mux.Handle("GET /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.GetAddresses)))
 
-	// Catalog
+	// Catalog (Public)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/products", catalogHandler.ListProducts)
 	mux.HandleFunc("GET /api/v1/products/{slug}", catalogHandler.GetProductDetails)
+
+	// Admin (Protected)
+	adminMiddleware := func(h http.HandlerFunc) http.Handler {
+		return middleware.AuthMiddleware(middleware.AdminMiddleware(h))
+	}
+
+	mux.Handle("POST /api/v1/admin/products", adminMiddleware(adminCatalogHandler.CreateProduct))
+	mux.Handle("PUT /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.UpdateProduct))
+	mux.Handle("DELETE /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.DeleteProduct))
+	mux.Handle("POST /api/v1/admin/inventory/adjust", adminMiddleware(adminCatalogHandler.AdjustStock))
+
+	mux.Handle("GET /api/v1/admin/orders", adminMiddleware(adminOrderHandler.ListOrders))
+	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))
 
 	// Cart & Order (Protected)
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))

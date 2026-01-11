@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+type ContextKey string
+
+const UserContextKey ContextKey = "user"
+
 type User struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:varchar(50)"` // u_12345
 	Email     string    `json:"email" gorm:"uniqueIndex;not null"`
