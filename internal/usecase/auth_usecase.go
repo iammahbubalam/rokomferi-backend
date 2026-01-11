@@ -34,24 +34,24 @@ type GoogleUser struct {
 	Aud           string      `json:"aud"`
 }
 
-func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (string, *domain.User, error) {
+func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (string, string, *domain.User, error) {
 	slog.Info("Authenticating with Google", "token_length", len(idToken))
 	// 1. Verify Google Token manually
 	userInfo, err := verifyGoogleToken(idToken)
 	if err != nil {
 		slog.Error("Google token verification failed", "error", err)
-		return "", nil, fmt.Errorf("invalid google token: %v", err)
+		return "", "", nil, fmt.Errorf("invalid google token: %v", err)
 	}
 
 	// In production, verify Audience matches Client ID
 	if userInfo.Aud != u.clientID {
-		return "", nil, fmt.Errorf("token audience mismatch: expected %s, got %s", u.clientID, userInfo.Aud)
+		return "", "", nil, fmt.Errorf("token audience mismatch: expected %s, got %s", u.clientID, userInfo.Aud)
 	}
 
 	// 2. Find or Create User
 	user, err := u.userRepo.GetByEmail(ctx, userInfo.Email)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 
 	if user == nil {
@@ -67,19 +67,88 @@ func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (s
 		}
 		if err := u.userRepo.Create(ctx, user); err != nil {
 			slog.Error("Failed to create user", "error", err)
-			return "", nil, err
+			return "", "", nil, err
 		}
 	} else {
 		slog.Info("Existing user found", "user_id", user.ID)
 	}
 
-	// 3. Generate JWT
-	token, err := utils.GenerateJWT(user.ID, user.Email, user.Role)
+	// 3. Generate Access Token (JWT)
+	accessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role)
 	if err != nil {
+		return "", "", nil, err
+	}
+
+	// 4. Generate Refresh Token (UUID) and Save
+	refreshTokenStr := utils.GenerateUUID()
+	refreshToken := &domain.RefreshToken{
+		Token:     refreshTokenStr,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(time.Hour * 24 * 7), // 7 Days Validity
+		CreatedAt: time.Now(),
+		Device:    "unknown", // Could be passed from handler
+	}
+
+	if err := u.userRepo.SaveRefreshToken(ctx, refreshToken); err != nil {
 		return "", nil, err
 	}
 
-	return token, user, nil
+	// We return AccessToken as string, User object, and RefreshToken (needs struct change or return value change)
+	// Currently signature is (string, *User, error).
+	// To minimize breaking changes elsewhere immediately (though we are refactoring), let's return AccessToken.
+	// BUT we need to pass RefreshToken to handler to set cookie.
+	// So we should return separate object or just return refreshTokenStr as well.
+	// Let's change return signature to (accessToken string, refreshToken string, user *domain.User, err error)
+	// Wait, that might break interface if one exists. No interface for Usecase yet, only struct.
+
+	// Modifying return to: (accessToken, refreshToken, user, error)
+	return accessToken, refreshTokenStr, user, nil
+}
+
+func (u *AuthUsecase) RefreshAccessToken(ctx context.Context, refreshTokenStr string) (string, error) {
+	// 1. Verify Refresh Token
+	rt, err := u.userRepo.GetRefreshToken(ctx, refreshTokenStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid refresh token")
+	}
+
+	if rt.Revoked {
+		return "", fmt.Errorf("token revoked")
+	}
+	if time.Now().After(rt.ExpiresAt) {
+		return "", fmt.Errorf("token expired")
+	}
+
+	// 2. Refresh it? Or just issue new Access?
+	// User said "secure access and refresh token strategy".
+	// Usually invalidating old refresh and issuing new one (Rotating Refresh Tokens) is strictly more secure.
+	// But "don't make it complex". So keep Refresh Token valid until expiry.
+
+	user, err := u.userRepo.GetByID(ctx, rt.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	newAccessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role)
+	return newAccessToken, err
+}
+
+// --- Address Management ---
+
+func (u *AuthUsecase) AddAddress(ctx context.Context, userID string, req domain.Address) (*domain.Address, error) {
+	// Sanitize UserID
+	req.UserID = userID
+	req.ID = fmt.Sprintf("addr_%d", time.Now().UnixNano())
+	req.CreatedAt = time.Now()
+
+	if err := u.userRepo.AddAddress(ctx, &req); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+func (u *AuthUsecase) GetAddresses(ctx context.Context, userID string) ([]domain.Address, error) {
+	return u.userRepo.GetAddresses(ctx, userID)
 }
 
 func verifyGoogleToken(token string) (*GoogleUser, error) {

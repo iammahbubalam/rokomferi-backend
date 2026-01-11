@@ -62,8 +62,13 @@ func main() {
 
 	// Auth
 	mux.HandleFunc("POST /api/v1/auth/google", authHandler.GoogleLogin)
+	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh) // New
 	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
 	mux.Handle("GET /api/v1/auth/me", middleware.AuthMiddleware(http.HandlerFunc(authHandler.Me)))
+
+	// User Profile / Address
+	mux.Handle("POST /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.AddAddress)))
+	mux.Handle("GET /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.GetAddresses)))
 
 	// Catalog
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/rand"
 	"fmt"
 	"time"
 
@@ -51,4 +52,14 @@ func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 	}
 
 	return nil, fmt.Errorf("invalid token")
+}
+
+func GenerateUUID() string {
+	// Simple UUID-like string for MVP/Simplicity as requested (Or use google/uuid properly if import allowed)
+	// User said "just use uuid".
+	// To avoid external dep "google/uuid" if not present, i'll use a strong random hex approach or standard lib if available.
+	// Go doesn't have uuid in stdlib. I'll use crypto/rand.
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }

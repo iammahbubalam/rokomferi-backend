@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
-	"time"
 )
 
 type AuthHandler struct {
@@ -22,37 +22,93 @@ type googleLoginReq struct {
 
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info("GoogleLogin request received")
-	var req googleLoginReq
+	var req struct {
+		IDToken string `json:"idToken"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.Error("Failed to decode GoogleLogin request", "error", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	token, user, err := h.authUC.AuthenticateGoogle(r.Context(), req.IDToken)
+	// Updated call to AuthenticateGoogle
+	accessToken, refreshToken, user, err := h.authUC.AuthenticateGoogle(r.Context(), req.IDToken)
 	if err != nil {
 		slog.Error("Authentication failed", "error", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	slog.Info("User authenticated successfully", "user_id", user.ID, "email", user.Email)
 
-	// Set Cookie
+	// Set Refresh Token as HttpOnly Cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "accessToken",
-		Value:    token,
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/", // Allows access for refresh endpoint
 		HttpOnly: true,
-		Secure:   true, // Should be true in prod
+		Secure:   true, // Should be true in production/https
 		SameSite: http.SameSiteStrictMode,
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
+		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	})
+
+	slog.Info("User authenticated successfully", "user_id", user.ID, "email", user.Email)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"accessToken": token,
+		"accessToken": accessToken,
 		"user":        user,
 	})
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		http.Error(w, "Refresh token missing", http.StatusUnauthorized)
+		return
+	}
+
+	newAccessToken, err := h.authUC.RefreshAccessToken(r.Context(), cookie.Value)
+	if err != nil {
+		slog.Error("Token refresh failed", "error", err)
+		// Clear cookie if invalid
+		http.SetCookie(w, &http.Cookie{Name: "refresh_token", MaxAge: -1, Path: "/"})
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"accessToken": newAccessToken,
+	})
+}
+
+// --- Address Handlers ---
+
+func (h *AuthHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(string)
+	var req domain.Address
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	addr, err := h.authUC.AddAddress(r.Context(), userID, req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(addr)
+}
+
+func (h *AuthHandler) GetAddresses(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(string)
+	addrs, err := h.authUC.GetAddresses(r.Context(), userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(addrs)
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -79,14 +135,17 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	// Clear Cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "accessToken",
-		Value:    "",
+		MaxAge:   -1,
 		Path:     "/",
-		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		Secure:   true,
 	})
-	w.WriteHeader(http.StatusNoContent)
+	http.SetCookie(w, &http.Cookie{
+		Name:   "refresh_token",
+		MaxAge: -1,
+		Path:   "/",
+	})
+	w.WriteHeader(http.StatusOK)
 }
