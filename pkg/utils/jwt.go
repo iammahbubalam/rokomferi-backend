@@ -20,18 +20,19 @@ func SetSecret(key string) {
 	secretKey = []byte(key)
 }
 
-func GenerateJWT(userID, email, role string) (string, error) {
+func GenerateJWT(userID, email, role string, expiry time.Duration) (string, error) {
 	if len(secretKey) == 0 {
 		return "", fmt.Errorf("jwt secret not set")
 	}
-	claims := jwt.MapClaims{
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":   userID,
 		"email": email,
 		"role":  role,
-		"exp":   time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
-	}
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(expiry).Unix(),
+	})
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(secretKey)
 }
 

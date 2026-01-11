@@ -12,14 +12,20 @@ import (
 )
 
 type AuthUsecase struct {
-	userRepo domain.UserRepository
-	clientID string
+	userRepo           domain.UserRepository
+	clientID           string
+	tokenInfoURL       string
+	accessTokenExpiry  time.Duration
+	refreshTokenExpiry time.Duration
 }
 
-func NewAuthUsecase(userRepo domain.UserRepository, clientID string) *AuthUsecase {
+func NewAuthUsecase(userRepo domain.UserRepository, clientID, tokenInfoURL string, atExpiry, rtExpiry time.Duration) *AuthUsecase {
 	return &AuthUsecase{
-		userRepo: userRepo,
-		clientID: clientID,
+		userRepo:           userRepo,
+		clientID:           clientID,
+		tokenInfoURL:       tokenInfoURL,
+		accessTokenExpiry:  atExpiry,
+		refreshTokenExpiry: rtExpiry,
 	}
 }
 
@@ -37,7 +43,7 @@ type GoogleUser struct {
 func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (string, string, *domain.User, error) {
 	slog.Info("Authenticating with Google", "token_length", len(idToken))
 	// 1. Verify Google Token manually
-	userInfo, err := verifyGoogleToken(idToken)
+	userInfo, err := u.verifyGoogleToken(idToken)
 	if err != nil {
 		slog.Error("Google token verification failed", "error", err)
 		return "", "", nil, fmt.Errorf("invalid google token: %v", err)
@@ -74,7 +80,7 @@ func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (s
 	}
 
 	// 3. Generate Access Token (JWT)
-	accessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role)
+	accessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role, u.accessTokenExpiry)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -84,13 +90,13 @@ func (u *AuthUsecase) AuthenticateGoogle(ctx context.Context, idToken string) (s
 	refreshToken := &domain.RefreshToken{
 		Token:     refreshTokenStr,
 		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(time.Hour * 24 * 7), // 7 Days Validity
+		ExpiresAt: time.Now().Add(u.refreshTokenExpiry),
 		CreatedAt: time.Now(),
 		Device:    "unknown", // Could be passed from handler
 	}
 
 	if err := u.userRepo.SaveRefreshToken(ctx, refreshToken); err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 
 	// We return AccessToken as string, User object, and RefreshToken (needs struct change or return value change)
@@ -129,7 +135,7 @@ func (u *AuthUsecase) RefreshAccessToken(ctx context.Context, refreshTokenStr st
 		return "", err
 	}
 
-	newAccessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role)
+	newAccessToken, err := utils.GenerateJWT(user.ID, user.Email, user.Role, u.accessTokenExpiry)
 	return newAccessToken, err
 }
 
@@ -151,10 +157,10 @@ func (u *AuthUsecase) GetAddresses(ctx context.Context, userID string) ([]domain
 	return u.userRepo.GetAddresses(ctx, userID)
 }
 
-func verifyGoogleToken(token string) (*GoogleUser, error) {
+func (u *AuthUsecase) verifyGoogleToken(token string) (*GoogleUser, error) {
 	// We use access_token because frontend useGoogleLogin returns access_token by default for custom buttons.
-	// https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=...
-	resp, err := http.Get(fmt.Sprintf("https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=%s", token))
+	url := fmt.Sprintf(u.tokenInfoURL, token)
+	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
 	}

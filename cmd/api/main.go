@@ -42,10 +42,16 @@ func main() {
 
 	// --- Modules Initialization ---
 
-	// 1. Auth Module
+	// 2. Auth Module
 	userRepo := postgres.NewUserRepository(db)
-	authUsecase := usecase.NewAuthUsecase(userRepo, cfg.GoogleClientID)
-	authHandler := v1.NewAuthHandler(authUsecase)
+	authUC := usecase.NewAuthUsecase(
+		userRepo,
+		cfg.GoogleClientID,
+		cfg.GoogleTokenInfoURL,
+		cfg.AccessTokenExpiry,
+		cfg.RefreshTokenExpiry,
+	)
+	authHandler := v1.NewAuthHandler(authUC)
 
 	// 2. Catalog Module
 	productRepo := postgres.NewProductRepository(db)
