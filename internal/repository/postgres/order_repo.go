@@ -12,7 +12,8 @@ type orderRepository struct {
 }
 
 func NewOrderRepository(db *gorm.DB) domain.OrderRepository {
-	db.AutoMigrate(&domain.Cart{}, &domain.CartItem{}, &domain.Order{}, &domain.OrderItem{})
+	// WARNING: Disabled for performance.
+	// db.AutoMigrate(&domain.Cart{}, &domain.CartItem{}, &domain.Order{}, &domain.OrderItem{})
 	return &orderRepository{db: db}
 }
 

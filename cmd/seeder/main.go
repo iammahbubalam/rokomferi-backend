@@ -176,19 +176,19 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 	products := []domain.Product{
 		// Men - Panjabi
 		{
-			Name: "Indigo Silk Panjabi", CategoryID: getCatID("panjabi"), BasePrice: 4500,
+			Name: "Indigo Silk Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 4500,
 			Description: "Premium indigo silk panjabi with intricate embroidery.",
 			StockStatus: "in_stock", Stock: 50, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/panjabi-indigo-silk.png"}},
 		},
 		{
-			Name: "Platinum White Panjabi", CategoryID: getCatID("panjabi"), BasePrice: 3500,
+			Name: "Platinum White Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 3500,
 			Description: "Classic platinum white cotton panjabi suitable for summer.",
 			StockStatus: "in_stock", Stock: 100, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/panjabi-platinum-white.png"}},
 		},
 		{
-			Name: "Sage Green Embroidered Panjabi", CategoryID: getCatID("panjabi"), BasePrice: 5200,
+			Name: "Sage Green Embroidered Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 5200,
 			Description: "Elegant sage green panjabi for festive occasions.",
 			StockStatus: "in_stock", Stock: 30, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/panjabi-sage-green.png"}},
@@ -196,13 +196,13 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 
 		// Women - Sarees
 		{
-			Name: "Crimson Bridal Banarasi", CategoryID: getCatID("sarees"), BasePrice: 25000,
+			Name: "Crimson Bridal Banarasi", Categories: []domain.Category{{ID: getCatID("sarees")}}, BasePrice: 25000,
 			Description: "Authentic crimson Banarasi saree with gold zari work.",
 			StockStatus: "in_stock", Stock: 5, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/saree-crimson-bridal.png"}},
 		},
 		{
-			Name: "Midnight Blue Katan", CategoryID: getCatID("sarees"), BasePrice: 12500,
+			Name: "Midnight Blue Katan", Categories: []domain.Category{{ID: getCatID("sarees")}}, BasePrice: 12500,
 			Description: "Stunning midnight blue katan saree with silver motifs.",
 			StockStatus: "in_stock", Stock: 15, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/saree-blue-katan.png"}},
@@ -210,19 +210,19 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 
 		// Women - Kurtis
 		{
-			Name: "Emerald Green Kurti", CategoryID: getCatID("kurtis"), BasePrice: 2500,
+			Name: "Emerald Green Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 2500,
 			Description: "Comfortable emerald green cotton kurti.",
 			StockStatus: "in_stock", Stock: 60, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/kurti-emerald.png"}},
 		},
 		{
-			Name: "Ivory Khadi Kurti", CategoryID: getCatID("kurtis"), BasePrice: 2200,
+			Name: "Ivory Khadi Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 2200,
 			Description: "Minimalist ivory khadi kurti with wooden buttons.",
 			StockStatus: "in_stock", Stock: 45, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/kurti-ivory-khadi.png"}},
 		},
 		{
-			Name: "Ruby Red Cotton Kurti", CategoryID: getCatID("kurtis"), BasePrice: 1800,
+			Name: "Ruby Red Cotton Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 1800,
 			Description: "Vibrant ruby red kurti for daily wear.",
 			StockStatus: "in_stock", Stock: 80, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/kurti-ruby-cotton.png"}},
@@ -230,19 +230,19 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 
 		// Women - Three Piece
 		{
-			Name: "Black Georgette Set", CategoryID: getCatID("three-piece"), BasePrice: 4800,
+			Name: "Black Georgette Set", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 4800,
 			Description: "Stylish black georgette three-piece suit.",
 			StockStatus: "in_stock", Stock: 25, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/threepiece-black-georgette.png"}},
 		},
 		{
-			Name: "Lilac Chiffon Suit", CategoryID: getCatID("three-piece"), BasePrice: 5500,
+			Name: "Lilac Chiffon Suit", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 5500,
 			Description: "Soft lilac chiffon suit with digital print.",
 			StockStatus: "in_stock", Stock: 20, IsFeatured: true,
 			Media: domain.JSONB{"images": []string{"/assets/threepiece-lilac-chiffon.png"}},
 		},
 		{
-			Name: "Peach Cotton Set", CategoryID: getCatID("three-piece"), BasePrice: 3200,
+			Name: "Peach Cotton Set", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 3200,
 			Description: "Breathable peach cotton three-piece.",
 			StockStatus: "in_stock", Stock: 40, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/threepiece-peach.png"}},
@@ -250,19 +250,19 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 
 		// Accessories
 		{
-			Name: "Pearl Choker Set", CategoryID: getCatID("jewelry"), BasePrice: 1500,
+			Name: "Pearl Choker Set", Categories: []domain.Category{{ID: getCatID("jewelry")}}, BasePrice: 1500,
 			Description: "Elegant imitation pearl choker with earrings.",
 			StockStatus: "in_stock", Stock: 100, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/accessory-pearl-choker.png"}},
 		},
 		{
-			Name: "Silver Oxidized Jhumka", CategoryID: getCatID("jewelry"), BasePrice: 850,
+			Name: "Silver Oxidized Jhumka", Categories: []domain.Category{{ID: getCatID("jewelry")}}, BasePrice: 850,
 			Description: "Traditional silver oxidized jhumka earrings.",
 			StockStatus: "in_stock", Stock: 150, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/accessory-silver-jhumka.png"}},
 		},
 		{
-			Name: "Velvet Potli Bag", CategoryID: getCatID("bags"), BasePrice: 1200,
+			Name: "Velvet Potli Bag", Categories: []domain.Category{{ID: getCatID("bags")}}, BasePrice: 1200,
 			Description: "Embroidered velvet potli bag for weddings.",
 			StockStatus: "in_stock", Stock: 50, IsFeatured: false,
 			Media: domain.JSONB{"images": []string{"/assets/accessory-velvet-potli.png"}},
@@ -271,7 +271,7 @@ func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) 
 
 	var productIDs []string
 	for _, p := range products {
-		if p.CategoryID == "" {
+		if len(p.Categories) == 0 || p.Categories[0].ID == "" {
 			continue
 		}
 

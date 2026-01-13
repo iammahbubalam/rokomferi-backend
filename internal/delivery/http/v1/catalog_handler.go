@@ -134,3 +134,30 @@ func (h *CatalogHandler) GetReviews(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reviews)
 }
+
+// --- Collections ---
+
+func (h *CatalogHandler) GetCollections(w http.ResponseWriter, r *http.Request) {
+	collections, err := h.catalogUC.GetCollections(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(collections)
+}
+
+func (h *CatalogHandler) GetCollectionBySlug(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	if slug == "" {
+		http.Error(w, "Slug required", http.StatusBadRequest)
+		return
+	}
+	collection, err := h.catalogUC.GetCollectionBySlug(r.Context(), slug)
+	if err != nil {
+		http.Error(w, "Collection not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(collection)
+}

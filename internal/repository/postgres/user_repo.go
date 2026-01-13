@@ -14,9 +14,10 @@ type userRepository struct {
 
 func NewUserRepository(db *gorm.DB) domain.UserRepository {
 	// Auto Migrate the schema including new tables
-	if err := db.AutoMigrate(&domain.User{}, &domain.Address{}, &domain.RefreshToken{}); err != nil {
-		panic(err)
-	}
+	// WARNING: Disabled for performance. Check information_schema takes >1s on NeonDB.
+	// if err := db.AutoMigrate(&domain.User{}, &domain.Address{}, &domain.RefreshToken{}); err != nil {
+	// 	panic(err)
+	// }
 	return &userRepository{db: db}
 }
 

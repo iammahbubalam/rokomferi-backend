@@ -105,6 +105,9 @@ func main() {
 	mux.HandleFunc("GET /api/v1/products/{id}/reviews", catalogHandler.GetReviews)                                          // Public
 	mux.Handle("POST /api/v1/products/{id}/reviews", middleware.AuthMiddleware(http.HandlerFunc(catalogHandler.AddReview))) // Protected
 
+	mux.HandleFunc("GET /api/v1/collections", catalogHandler.GetCollections)
+	mux.HandleFunc("GET /api/v1/collections/{slug}", catalogHandler.GetCollectionBySlug)
+
 	// Admin (Protected)
 	adminMiddleware := func(h http.HandlerFunc) http.Handler {
 		return middleware.AuthMiddleware(middleware.AdminMiddleware(h))
@@ -118,6 +121,12 @@ func main() {
 	mux.Handle("POST /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.CreateCategory))
 	mux.Handle("PUT /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.UpdateCategory))
 	mux.Handle("DELETE /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.DeleteCategory))
+	mux.Handle("POST /api/v1/admin/categories/reorder", adminMiddleware(adminCatalogHandler.ReorderCategories))
+
+	mux.Handle("POST /api/v1/admin/collections", adminMiddleware(adminCatalogHandler.CreateCollection))
+	mux.Handle("PUT /api/v1/admin/collections/{id}", adminMiddleware(adminCatalogHandler.UpdateCollection))
+	mux.Handle("DELETE /api/v1/admin/collections/{id}", adminMiddleware(adminCatalogHandler.DeleteCollection))
+	mux.Handle("POST /api/v1/admin/collections/{id}/products", adminMiddleware(adminCatalogHandler.ManageCollectionProduct))
 
 	mux.Handle("GET /api/v1/admin/orders", adminMiddleware(adminOrderHandler.ListOrders))
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))

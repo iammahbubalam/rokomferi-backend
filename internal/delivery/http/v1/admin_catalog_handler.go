@@ -15,11 +15,25 @@ func NewAdminCatalogHandler(uc *usecase.CatalogUsecase) *AdminCatalogHandler {
 	return &AdminCatalogHandler{catalogUC: uc}
 }
 
+type productReq struct {
+	domain.Product
+	CategoryIDs []string `json:"categoryIds"`
+}
+
 func (h *AdminCatalogHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
-	var product domain.Product
-	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
+	var req productReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
+	}
+
+	product := req.Product
+	// Map CategoryIDs to Categories
+	if len(req.CategoryIDs) > 0 {
+		product.Categories = make([]domain.Category, len(req.CategoryIDs))
+		for i, id := range req.CategoryIDs {
+			product.Categories[i] = domain.Category{ID: id}
+		}
 	}
 
 	if err := h.catalogUC.CreateProduct(r.Context(), &product); err != nil {
@@ -38,12 +52,25 @@ func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var product domain.Product
-	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
+	var req productReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
+
+	product := req.Product
 	product.ID = id
+
+	// Map CategoryIDs to Categories
+	if len(req.CategoryIDs) > 0 {
+		product.Categories = make([]domain.Category, len(req.CategoryIDs))
+		for i, id := range req.CategoryIDs {
+			product.Categories[i] = domain.Category{ID: id}
+		}
+	} else if req.CategoryIDs != nil {
+		// Explicit empty array clears categories
+		product.Categories = []domain.Category{}
+	}
 
 	if err := h.catalogUC.UpdateProduct(r.Context(), &product); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -156,4 +183,108 @@ func (h *AdminCatalogHandler) DeleteCategory(w http.ResponseWriter, r *http.Requ
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+type reorderReq struct {
+	Updates []domain.CategoryReorderItem `json:"updates"`
+}
+
+func (h *AdminCatalogHandler) ReorderCategories(w http.ResponseWriter, r *http.Request) {
+	var req reorderReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.ReorderCategories(r.Context(), req.Updates); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "reordered"})
+}
+
+// --- Collections ---
+
+func (h *AdminCatalogHandler) CreateCollection(w http.ResponseWriter, r *http.Request) {
+	var collection domain.Collection
+	if err := json.NewDecoder(r.Body).Decode(&collection); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.CreateCollection(r.Context(), &collection); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(collection)
+}
+
+func (h *AdminCatalogHandler) UpdateCollection(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Collection ID required", http.StatusBadRequest)
+		return
+	}
+
+	var collection domain.Collection
+	if err := json.NewDecoder(r.Body).Decode(&collection); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+	collection.ID = id
+
+	if err := h.catalogUC.UpdateCollection(r.Context(), &collection); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+}
+
+func (h *AdminCatalogHandler) DeleteCollection(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Collection ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.DeleteCollection(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+func (h *AdminCatalogHandler) ManageCollectionProduct(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id") // Collection ID
+	var req struct {
+		ProductID string `json:"productId"`
+		Action    string `json:"action"` // "add" or "remove"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	if req.Action == "add" {
+		err = h.catalogUC.AddProductToCollection(r.Context(), id, req.ProductID)
+	} else {
+		err = h.catalogUC.RemoveProductFromCollection(r.Context(), id, req.ProductID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }

@@ -78,6 +78,10 @@ func (uc *CatalogUsecase) DeleteCategory(ctx context.Context, id string) error {
 	return uc.repo.DeleteCategory(ctx, id)
 }
 
+func (uc *CatalogUsecase) ReorderCategories(ctx context.Context, updates []domain.CategoryReorderItem) error {
+	return uc.repo.ReorderCategories(ctx, updates)
+}
+
 func (u *CatalogUsecase) ListProducts(ctx context.Context, filter domain.ProductFilter) ([]domain.Product, int64, error) {
 	// Add business logic here if needed (e.g., validate filters)
 	return u.repo.GetProducts(ctx, filter)
@@ -106,4 +110,49 @@ func (u *CatalogUsecase) AddReview(ctx context.Context, userID, productID string
 
 func (u *CatalogUsecase) GetProductReviews(ctx context.Context, productID string) ([]domain.Review, error) {
 	return u.repo.GetReviews(ctx, productID)
+}
+
+// --- Collections ---
+
+func (uc *CatalogUsecase) GetCollections(ctx context.Context) ([]domain.Collection, error) {
+	return uc.repo.GetCollections(ctx)
+}
+
+func (uc *CatalogUsecase) GetCollectionBySlug(ctx context.Context, slug string) (*domain.Collection, error) {
+	return uc.repo.GetCollectionBySlug(ctx, slug)
+}
+
+func (uc *CatalogUsecase) CreateCollection(ctx context.Context, collection *domain.Collection) error {
+	if collection.Title == "" {
+		return fmt.Errorf("collection title is required")
+	}
+	if collection.Slug == "" {
+		collection.Slug = utils.GenerateSlug(collection.Title)
+	}
+	if collection.ID == "" {
+		collection.ID = utils.GenerateUUID()
+	}
+	if !collection.IsActive {
+		collection.IsActive = true
+	}
+	collection.CreatedAt = time.Now()
+	collection.UpdatedAt = time.Now()
+	return uc.repo.CreateCollection(ctx, collection)
+}
+
+func (uc *CatalogUsecase) UpdateCollection(ctx context.Context, collection *domain.Collection) error {
+	collection.UpdatedAt = time.Now()
+	return uc.repo.UpdateCollection(ctx, collection)
+}
+
+func (uc *CatalogUsecase) DeleteCollection(ctx context.Context, id string) error {
+	return uc.repo.DeleteCollection(ctx, id)
+}
+
+func (uc *CatalogUsecase) AddProductToCollection(ctx context.Context, collectionID, productID string) error {
+	return uc.repo.AddProductToCollection(ctx, collectionID, productID)
+}
+
+func (uc *CatalogUsecase) RemoveProductFromCollection(ctx context.Context, collectionID, productID string) error {
+	return uc.repo.RemoveProductFromCollection(ctx, collectionID, productID)
 }
