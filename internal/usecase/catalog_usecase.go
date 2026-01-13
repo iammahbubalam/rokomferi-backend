@@ -50,6 +50,10 @@ func (u *CatalogUsecase) GetCategoryTree(ctx context.Context) ([]domain.Category
 	return u.repo.GetCategoryTree(ctx)
 }
 
+func (u *CatalogUsecase) GetNavCategoryTree(ctx context.Context) ([]domain.Category, error) {
+	return u.repo.GetNavCategoryTree(ctx)
+}
+
 func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.Category) error {
 	if category.Name == "" {
 		return fmt.Errorf("category name is required")
@@ -57,12 +61,13 @@ func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.C
 	if category.Slug == "" {
 		category.Slug = utils.GenerateSlug(category.Name)
 	}
+	// Check if slug is already taken
+	existing, _ := uc.repo.GetCategoryBySlug(ctx, category.Slug)
+	if existing != nil {
+		return fmt.Errorf("slug '%s' is already taken", category.Slug)
+	}
 	if category.ID == "" {
 		category.ID = utils.GenerateUUID()
-	}
-	// Ensure defaults
-	if !category.IsActive {
-		category.IsActive = true
 	}
 	return uc.repo.CreateCategory(ctx, category)
 }

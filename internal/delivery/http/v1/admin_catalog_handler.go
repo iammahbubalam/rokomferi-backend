@@ -15,6 +15,17 @@ func NewAdminCatalogHandler(uc *usecase.CatalogUsecase) *AdminCatalogHandler {
 	return &AdminCatalogHandler{catalogUC: uc}
 }
 
+// GetAllCategories returns ALL categories (including inactive) for admin panel
+func (h *AdminCatalogHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+	cats, err := h.catalogUC.GetCategoryTree(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cats)
+}
+
 type productReq struct {
 	domain.Product
 	CategoryIDs []string `json:"categoryIds"`

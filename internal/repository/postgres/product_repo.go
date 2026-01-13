@@ -22,11 +22,17 @@ func NewProductRepository(db *gorm.DB) domain.ProductRepository {
 
 func (r *productRepository) GetCategoryTree(ctx context.Context) ([]domain.Category, error) {
 	var categories []domain.Category
-	// Fetch only top-level categories, eagerly load children with sorting
+	// Return ALL root categories with nested children (recursive preload)
 	if err := r.db.WithContext(ctx).
 		Where("parent_id IS NULL").
 		Order("order_index asc").
 		Preload("Children", func(db *gorm.DB) *gorm.DB {
+			return db.Order("order_index asc")
+		}).
+		Preload("Children.Children", func(db *gorm.DB) *gorm.DB {
+			return db.Order("order_index asc")
+		}).
+		Preload("Children.Children.Children", func(db *gorm.DB) *gorm.DB {
 			return db.Order("order_index asc")
 		}).
 		Find(&categories).Error; err != nil {
@@ -35,14 +41,45 @@ func (r *productRepository) GetCategoryTree(ctx context.Context) ([]domain.Categ
 	return categories, nil
 }
 
+// GetNavCategoryTree returns only active+nav categories for public navbar
+func (r *productRepository) GetNavCategoryTree(ctx context.Context) ([]domain.Category, error) {
+	var categories []domain.Category
+	if err := r.db.WithContext(ctx).
+		Where("parent_id IS NULL AND is_active = ? AND show_in_nav = ?", true, true).
+		Order("order_index asc").
+		Preload("Children", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ? AND show_in_nav = ?", true, true).Order("order_index asc")
+		}).
+		Preload("Children.Children", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ? AND show_in_nav = ?", true, true).Order("order_index asc")
+		}).
+		Preload("Children.Children.Children", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ? AND show_in_nav = ?", true, true).Order("order_index asc")
+		}).
+		Find(&categories).Error; err != nil {
+		return nil, err
+	}
+	return categories, nil
+}
+
+func (r *productRepository) GetCategoryBySlug(ctx context.Context, slug string) (*domain.Category, error) {
+	var category domain.Category
+	if err := r.db.WithContext(ctx).Where("slug = ?", slug).First(&category).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &category, nil
+}
+
 func (r *productRepository) CreateCategory(ctx context.Context, category *domain.Category) error {
 	return r.db.WithContext(ctx).Create(category).Error
 }
 
 func (r *productRepository) UpdateCategory(ctx context.Context, category *domain.Category) error {
-	return r.db.WithContext(ctx).Model(category).
-		Select("Name", "Slug", "ParentID", "OrderIndex", "Icon", "Image", "IsActive", "ShowInNav", "MetaTitle", "MetaDescription", "Keywords").
-		Updates(category).Error
+	// Save will insert if no ID or update all fields if ID exists
+	return r.db.WithContext(ctx).Save(category).Error
 }
 
 func (r *productRepository) DeleteCategory(ctx context.Context, id string) error {

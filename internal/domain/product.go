@@ -97,6 +97,8 @@ type InventoryLog struct {
 type ProductRepository interface {
 	// Category Management
 	GetCategoryTree(ctx context.Context) ([]Category, error)
+	GetNavCategoryTree(ctx context.Context) ([]Category, error)
+	GetCategoryBySlug(ctx context.Context, slug string) (*Category, error)
 	CreateCategory(ctx context.Context, category *Category) error
 	UpdateCategory(ctx context.Context, category *Category) error
 	DeleteCategory(ctx context.Context, id string) error

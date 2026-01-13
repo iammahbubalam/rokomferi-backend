@@ -118,6 +118,7 @@ func main() {
 	mux.Handle("DELETE /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.DeleteProduct))
 	mux.Handle("POST /api/v1/admin/inventory/adjust", adminMiddleware(adminCatalogHandler.AdjustStock))
 
+	mux.Handle("GET /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.GetAllCategories))
 	mux.Handle("POST /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.CreateCategory))
 	mux.Handle("PUT /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.UpdateCategory))
 	mux.Handle("DELETE /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.DeleteCategory))
