@@ -88,3 +88,49 @@ func (h *CatalogHandler) GetProductDetails(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(product)
 }
+
+func (h *CatalogHandler) AddReview(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	productID := r.PathValue("id")
+	if productID == "" {
+		http.Error(w, "Product ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Rating  int    `json:"rating"`
+		Comment string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.AddReview(r.Context(), user.ID, productID, req.Rating, req.Comment); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"status": "review added"})
+}
+
+func (h *CatalogHandler) GetReviews(w http.ResponseWriter, r *http.Request) {
+	productID := r.PathValue("id")
+	if productID == "" {
+		http.Error(w, "Product ID required", http.StatusBadRequest)
+		return
+	}
+
+	reviews, err := h.catalogUC.GetProductReviews(r.Context(), productID)
+	if err != nil {
+		http.Error(w, "Failed to fetch reviews", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reviews)
+}

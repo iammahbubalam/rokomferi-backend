@@ -14,7 +14,7 @@ type productRepository struct {
 }
 
 func NewProductRepository(db *gorm.DB) domain.ProductRepository {
-	db.AutoMigrate(&domain.Category{}, &domain.Product{}, &domain.Variant{}, &domain.InventoryLog{})
+	db.AutoMigrate(&domain.Category{}, &domain.Product{}, &domain.Variant{}, &domain.InventoryLog{}, &domain.Review{})
 	return &productRepository{db: db}
 }
 
@@ -27,6 +27,20 @@ func (r *productRepository) GetCategoryTree(ctx context.Context) ([]domain.Categ
 		return nil, err
 	}
 	return categories, nil
+}
+
+func (r *productRepository) CreateCategory(ctx context.Context, category *domain.Category) error {
+	return r.db.WithContext(ctx).Create(category).Error
+}
+
+func (r *productRepository) UpdateCategory(ctx context.Context, category *domain.Category) error {
+	return r.db.WithContext(ctx).Model(category).
+		Select("Name", "Slug", "ParentID", "OrderIndex", "Icon", "Image", "IsActive").
+		Updates(category).Error
+}
+
+func (r *productRepository) DeleteCategory(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&domain.Category{}, "id = ?", id).Error
 }
 
 func (r *productRepository) GetProducts(ctx context.Context, filter domain.ProductFilter) ([]domain.Product, int64, error) {
@@ -168,4 +182,20 @@ func (r *productRepository) DeleteProduct(ctx context.Context, id string) error 
 	// For "Robustness", checking constraints (orders, stock) is Wise.
 	// But standard DELETE for now.
 	return r.db.WithContext(ctx).Delete(&domain.Product{}, "id = ?", id).Error
+}
+
+// --- Reviews ---
+
+func (r *productRepository) CreateReview(ctx context.Context, review *domain.Review) error {
+	return r.db.WithContext(ctx).Create(review).Error
+}
+
+func (r *productRepository) GetReviews(ctx context.Context, productID string) ([]domain.Review, error) {
+	var reviews []domain.Review
+	err := r.db.WithContext(ctx).
+		Where("product_id = ?", productID).
+		Preload("User"). // Eager load reviewer info
+		Order("created_at desc").
+		Find(&reviews).Error
+	return reviews, err
 }

@@ -23,6 +23,7 @@ type Category struct {
 	Children   []Category `json:"children" gorm:"foreignKey:ParentID"`
 	OrderIndex int        `json:"orderIndex" gorm:"default:0"`
 	Icon       string     `json:"icon"`
+	Image      string     `json:"image"`
 	IsActive   bool       `json:"isActive" gorm:"default:true"`
 }
 
@@ -70,7 +71,12 @@ type InventoryLog struct {
 // --- Interfaces ---
 
 type ProductRepository interface {
+	// Category Management
 	GetCategoryTree(ctx context.Context) ([]Category, error)
+	CreateCategory(ctx context.Context, category *Category) error
+	UpdateCategory(ctx context.Context, category *Category) error
+	DeleteCategory(ctx context.Context, id string) error
+
 	GetProducts(ctx context.Context, filter ProductFilter) ([]Product, int64, error)
 	GetProductBySlug(ctx context.Context, slug string) (*Product, error)
 	GetProductByID(ctx context.Context, id string) (*Product, error)
@@ -80,6 +86,20 @@ type ProductRepository interface {
 	CreateProduct(ctx context.Context, product *Product) error
 	UpdateProduct(ctx context.Context, product *Product) error
 	DeleteProduct(ctx context.Context, id string) error
+
+	// Reviews
+	CreateReview(ctx context.Context, review *Review) error
+	GetReviews(ctx context.Context, productID string) ([]Review, error)
+}
+
+type Review struct {
+	ID        string    `json:"id" gorm:"primaryKey"`
+	ProductID string    `json:"productId"`
+	UserID    string    `json:"userId"`
+	User      User      `json:"user" gorm:"foreignKey:UserID"`
+	Rating    int       `json:"rating"` // 1-5
+	Comment   string    `json:"comment"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type ProductFilter struct {

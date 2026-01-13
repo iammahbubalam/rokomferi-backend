@@ -50,6 +50,34 @@ func (u *CatalogUsecase) GetCategoryTree(ctx context.Context) ([]domain.Category
 	return u.repo.GetCategoryTree(ctx)
 }
 
+func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.Category) error {
+	if category.Name == "" {
+		return fmt.Errorf("category name is required")
+	}
+	if category.Slug == "" {
+		category.Slug = utils.GenerateSlug(category.Name)
+	}
+	if category.ID == "" {
+		category.ID = utils.GenerateUUID()
+	}
+	// Ensure defaults
+	if !category.IsActive {
+		category.IsActive = true
+	}
+	return uc.repo.CreateCategory(ctx, category)
+}
+
+func (uc *CatalogUsecase) UpdateCategory(ctx context.Context, category *domain.Category) error {
+	if category.ID == "" {
+		return fmt.Errorf("category ID required")
+	}
+	return uc.repo.UpdateCategory(ctx, category)
+}
+
+func (uc *CatalogUsecase) DeleteCategory(ctx context.Context, id string) error {
+	return uc.repo.DeleteCategory(ctx, id)
+}
+
 func (u *CatalogUsecase) ListProducts(ctx context.Context, filter domain.ProductFilter) ([]domain.Product, int64, error) {
 	// Add business logic here if needed (e.g., validate filters)
 	return u.repo.GetProducts(ctx, filter)
@@ -57,4 +85,25 @@ func (u *CatalogUsecase) ListProducts(ctx context.Context, filter domain.Product
 
 func (u *CatalogUsecase) GetProductDetails(ctx context.Context, slug string) (*domain.Product, error) {
 	return u.repo.GetProductBySlug(ctx, slug)
+}
+
+func (u *CatalogUsecase) AddReview(ctx context.Context, userID, productID string, rating int, comment string) error {
+	if rating < 1 || rating > 5 {
+		return fmt.Errorf("rating must be between 1 and 5")
+	}
+
+	review := &domain.Review{
+		ID:        utils.GenerateUUID(),
+		UserID:    userID,
+		ProductID: productID,
+		Rating:    rating,
+		Comment:   comment,
+		CreatedAt: time.Now(),
+	}
+
+	return u.repo.CreateReview(ctx, review)
+}
+
+func (u *CatalogUsecase) GetProductReviews(ctx context.Context, productID string) ([]domain.Review, error) {
+	return u.repo.GetReviews(ctx, productID)
 }

@@ -102,3 +102,58 @@ func (h *AdminCatalogHandler) AdjustStock(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "stock updated"})
 }
+
+func (h *AdminCatalogHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	var category domain.Category
+	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.CreateCategory(r.Context(), &category); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(category)
+}
+
+func (h *AdminCatalogHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Category ID required", http.StatusBadRequest)
+		return
+	}
+
+	var category domain.Category
+	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+	category.ID = id
+
+	if err := h.catalogUC.UpdateCategory(r.Context(), &category); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+}
+
+func (h *AdminCatalogHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Category ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.DeleteCategory(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
