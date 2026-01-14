@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"mime/multipart"
@@ -8,24 +11,25 @@ import (
 	"os"
 	"path/filepath"
 	"rokomferi-backend/config"
-	"rokomferi-backend/internal/domain"
-	postgresPkg "rokomferi-backend/pkg/postgres"
 	"rokomferi-backend/pkg/storage"
-	"rokomferi-backend/pkg/utils"
-	"time"
 
-	"gorm.io/gorm"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var r2Storage *storage.R2Storage
 
 func main() {
 	cfg := config.LoadConfig()
-	db, err := postgresPkg.NewClient(cfg.DBUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	// Initialize R2
-	r2, err := storage.NewR2Storage(
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DBUrl)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+
+	// Initialize R2 Storage
+	r2Storage, err = storage.NewR2Storage(
 		cfg.R2AccountID,
 		cfg.R2AccessKeyID,
 		cfg.R2AccessKeySecret,
@@ -33,285 +37,264 @@ func main() {
 		cfg.R2PublicURL,
 	)
 	if err != nil {
-		log.Printf("Warning: Failed to init R2: %v", err)
+		log.Printf("⚠️ Warning: R2 Storage not configured: %v", err)
+		log.Println("   Images will use local paths instead of R2 URLs")
 	}
 
-	log.Println("--- Starting Seeder with R2 Uploads ---")
-	catMap := seedCategories(db)
-	users := seedUsers(db)
-	products := seedProducts(db, catMap, r2)
-	seedReviews(db, users, products)
-	log.Println("--- Seeding Completed ---")
+	log.Println("🌱 Starting Database Seeder...")
+
+	catMap := seedCategories(ctx, pool)
+	users := seedUsers(ctx, pool)
+	productIDs := seedProducts(ctx, pool, catMap)
+	seedCollections(ctx, pool, productIDs)
+	seedReviews(ctx, pool, users, productIDs)
+	seedAddresses(ctx, pool, users)
+	seedCartsAndOrders(ctx, pool, users, productIDs)
+	seedInventoryLogs(ctx, pool, productIDs)
+
+	log.Println("✅ Database Seeding Completed!")
 }
 
-func uploadImage(r2 *storage.R2Storage, relativePath string) string {
-	if r2 == nil {
-		return relativePath // R2 not configured
+// uploadImage uploads a local image to R2 and returns the URL
+func uploadImage(relativePath string) string {
+	if r2Storage == nil {
+		return relativePath // R2 not configured, return local path
 	}
 
-	// Path relative to rokomferi-backend/
+	// Path relative to backend folder
 	localPath := filepath.Join("../rokomferi-frontend/public", relativePath)
 
 	file, err := os.Open(localPath)
 	if err != nil {
-		log.Printf("Failed to open file %s: %v", localPath, err)
+		log.Printf("    ⚠️ Failed to open file %s: %v", localPath, err)
 		return relativePath
 	}
 	defer file.Close()
 
-	// Mock file header
+	// Create mock file header
 	fileInfo, _ := file.Stat()
 	header := &multipart.FileHeader{
 		Filename: filepath.Base(localPath),
 		Size:     fileInfo.Size(),
 		Header:   make(textproto.MIMEHeader),
 	}
-	// Simple content type detection
+
+	// Set content type based on extension
 	ext := filepath.Ext(localPath)
-	if ext == ".png" {
+	switch ext {
+	case ".png":
 		header.Header.Set("Content-Type", "image/png")
-	} else if ext == ".jpg" || ext == ".jpeg" {
+	case ".jpg", ".jpeg":
 		header.Header.Set("Content-Type", "image/jpeg")
-	} else if ext == ".svg" {
-		header.Header.Set("Content-Type", "image/svg+xml") // S3 might need this
+	case ".svg":
+		header.Header.Set("Content-Type", "image/svg+xml")
+	case ".webp":
+		header.Header.Set("Content-Type", "image/webp")
 	}
 
-	url, err := r2.UploadFile(file, header)
+	url, err := r2Storage.UploadFile(file, header)
 	if err != nil {
-		log.Printf("Failed to upload %s to R2: %v", localPath, err)
+		log.Printf("    ⚠️ Failed to upload %s to R2: %v", relativePath, err)
 		return relativePath
 	}
 
-	log.Printf("Uploaded %s -> %s", relativePath, url)
+	log.Printf("    📤 Uploaded: %s", filepath.Base(relativePath))
 	return url
 }
 
-func seedCategories(db *gorm.DB) map[string]string {
-	log.Println("Seeding Categories...")
-	catMap := make(map[string]string) // Slug -> ID
+func seedCategories(ctx context.Context, pool *pgxpool.Pool) map[string]string {
+	log.Println("  📁 Seeding Categories...")
+	catMap := make(map[string]string)
 
-	// 1. Top Level
-	cats := []domain.Category{
-		{Name: "Women", Slug: "women", OrderIndex: 1},
-		{Name: "Men", Slug: "men", OrderIndex: 2},
-		{Name: "Accessories", Slug: "accessories", OrderIndex: 3},
-	}
-	for _, c := range cats {
-		var existing domain.Category
-		if err := db.Where("slug = ?", c.Slug).First(&existing).Error; err == nil {
-			catMap[c.Slug] = existing.ID
-		} else {
-			c.ID = utils.GenerateUUID()
-			db.Create(&c)
-			catMap[c.Slug] = c.ID
-		}
+	// Top Level Categories
+	cats := []struct{ Name, Slug string }{
+		{"Women", "women"},
+		{"Men", "men"},
+		{"Accessories", "accessories"},
 	}
 
-	// 2. Sub Categories
-	subCats := []struct {
-		Name   string
-		Slug   string
-		Parent string
-	}{
-		{Name: "Sarees", Slug: "sarees", Parent: "women"},
-		{Name: "Kurtis", Slug: "kurtis", Parent: "women"},
-		{Name: "Three Piece", Slug: "three-piece", Parent: "women"},
-		{Name: "Panjabi", Slug: "panjabi", Parent: "men"},
-		{Name: "Jewelry", Slug: "jewelry", Parent: "accessories"},
-		{Name: "Bags & Potlis", Slug: "bags", Parent: "accessories"},
-	}
-
-	for _, sc := range subCats {
-		var existing domain.Category
-		if err := db.Where("slug = ?", sc.Slug).First(&existing).Error; err == nil {
-			catMap[sc.Slug] = existing.ID
-		} else {
-			parentID := catMap[sc.Parent]
-			newCat := domain.Category{
-				ID:       utils.GenerateUUID(),
-				Name:     sc.Name,
-				Slug:     sc.Slug,
-				ParentID: &parentID,
+	for i, c := range cats {
+		var id string
+		err := pool.QueryRow(ctx, "SELECT id FROM categories WHERE slug = $1", c.Slug).Scan(&id)
+		if err != nil {
+			err = pool.QueryRow(ctx,
+				"INSERT INTO categories (name, slug, order_index, is_active, show_in_nav) VALUES ($1, $2, $3, true, true) RETURNING id",
+				c.Name, c.Slug, i+1).Scan(&id)
+			if err != nil {
+				log.Printf("    ⚠️ Failed to create category %s: %v", c.Name, err)
+				continue
 			}
-			db.Create(&newCat)
-			catMap[sc.Slug] = newCat.ID
 		}
+		catMap[c.Slug] = id
 	}
+
+	// Sub Categories
+	subCats := []struct{ Name, Slug, Parent string }{
+		{"Sarees", "sarees", "women"},
+		{"Kurtis", "kurtis", "women"},
+		{"Three Piece", "three-piece", "women"},
+		{"Panjabi", "panjabi", "men"},
+		{"Jewelry", "jewelry", "accessories"},
+		{"Bags & Potlis", "bags", "accessories"},
+	}
+
+	for i, sc := range subCats {
+		var id string
+		err := pool.QueryRow(ctx, "SELECT id FROM categories WHERE slug = $1", sc.Slug).Scan(&id)
+		if err != nil {
+			parentID := catMap[sc.Parent]
+			err = pool.QueryRow(ctx,
+				"INSERT INTO categories (name, slug, parent_id, order_index, is_active, show_in_nav) VALUES ($1, $2, $3, $4, true, true) RETURNING id",
+				sc.Name, sc.Slug, parentID, i+1).Scan(&id)
+			if err != nil {
+				log.Printf("    ⚠️ Failed to create subcategory %s: %v", sc.Name, err)
+				continue
+			}
+		}
+		catMap[sc.Slug] = id
+	}
+
 	return catMap
 }
 
-func seedUsers(db *gorm.DB) []domain.User {
-	log.Println("Seeding Dummy Users...")
-	usersData := []domain.User{
-		{Email: "alice@example.com", FirstName: "Alice", LastName: "Wonder", Role: "customer"},
-		{Email: "bob@example.com", FirstName: "Bob", LastName: "Builder", Role: "customer"},
-		{Email: "charlie@example.com", FirstName: "Charlie", LastName: "Chaplin", Role: "customer"},
-		{Email: "diana@example.com", FirstName: "Diana", LastName: "Ross", Role: "customer"},
+func seedUsers(ctx context.Context, pool *pgxpool.Pool) []string {
+	log.Println("  👤 Seeding Users...")
+	users := []struct{ Email, FirstName, LastName string }{
+		{"alice@example.com", "Alice", "Wonder"},
+		{"bob@example.com", "Bob", "Builder"},
+		{"charlie@example.com", "Charlie", "Chaplin"},
+		{"diana@example.com", "Diana", "Ross"},
 	}
 
-	var users []domain.User
-	for _, u := range usersData {
-		var existing domain.User
-		if err := db.Where("email = ?", u.Email).First(&existing).Error; err == nil {
-			users = append(users, existing)
-		} else {
-			u.ID = utils.GenerateUUID()
-			db.Create(&u)
-			users = append(users, u)
+	var userIDs []string
+	for _, u := range users {
+		var id string
+		err := pool.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", u.Email).Scan(&id)
+		if err != nil {
+			err = pool.QueryRow(ctx,
+				"INSERT INTO users (email, first_name, last_name, role) VALUES ($1, $2, $3, 'customer') RETURNING id",
+				u.Email, u.FirstName, u.LastName).Scan(&id)
+			if err != nil {
+				log.Printf("    ⚠️ Failed to create user %s: %v", u.Email, err)
+				continue
+			}
 		}
+		userIDs = append(userIDs, id)
 	}
-	return users
+	return userIDs
 }
 
-func seedProducts(db *gorm.DB, catMap map[string]string, r2 *storage.R2Storage) []string {
-	log.Println("Seeding Products...")
-	// Helper to get ID safely
-	getCatID := func(slug string) string {
-		if id, ok := catMap[slug]; ok {
-			return id
-		}
-		return "" // Functionally shouldn't happen
-	}
+func seedProducts(ctx context.Context, pool *pgxpool.Pool, catMap map[string]string) []string {
+	log.Println("  📦 Seeding Products...")
 
-	products := []domain.Product{
-		// Men - Panjabi
-		{
-			Name: "Indigo Silk Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 4500,
-			Description: "Premium indigo silk panjabi with intricate embroidery.",
-			StockStatus: "in_stock", Stock: 50, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/panjabi-indigo-silk.png"}},
-		},
-		{
-			Name: "Platinum White Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 3500,
-			Description: "Classic platinum white cotton panjabi suitable for summer.",
-			StockStatus: "in_stock", Stock: 100, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/panjabi-platinum-white.png"}},
-		},
-		{
-			Name: "Sage Green Embroidered Panjabi", Categories: []domain.Category{{ID: getCatID("panjabi")}}, BasePrice: 5200,
-			Description: "Elegant sage green panjabi for festive occasions.",
-			StockStatus: "in_stock", Stock: 30, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/panjabi-sage-green.png"}},
-		},
-
-		// Women - Sarees
-		{
-			Name: "Crimson Bridal Banarasi", Categories: []domain.Category{{ID: getCatID("sarees")}}, BasePrice: 25000,
-			Description: "Authentic crimson Banarasi saree with gold zari work.",
-			StockStatus: "in_stock", Stock: 5, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/saree-crimson-bridal.png"}},
-		},
-		{
-			Name: "Midnight Blue Katan", Categories: []domain.Category{{ID: getCatID("sarees")}}, BasePrice: 12500,
-			Description: "Stunning midnight blue katan saree with silver motifs.",
-			StockStatus: "in_stock", Stock: 15, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/saree-blue-katan.png"}},
-		},
-
-		// Women - Kurtis
-		{
-			Name: "Emerald Green Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 2500,
-			Description: "Comfortable emerald green cotton kurti.",
-			StockStatus: "in_stock", Stock: 60, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/kurti-emerald.png"}},
-		},
-		{
-			Name: "Ivory Khadi Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 2200,
-			Description: "Minimalist ivory khadi kurti with wooden buttons.",
-			StockStatus: "in_stock", Stock: 45, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/kurti-ivory-khadi.png"}},
-		},
-		{
-			Name: "Ruby Red Cotton Kurti", Categories: []domain.Category{{ID: getCatID("kurtis")}}, BasePrice: 1800,
-			Description: "Vibrant ruby red kurti for daily wear.",
-			StockStatus: "in_stock", Stock: 80, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/kurti-ruby-cotton.png"}},
-		},
-
-		// Women - Three Piece
-		{
-			Name: "Black Georgette Set", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 4800,
-			Description: "Stylish black georgette three-piece suit.",
-			StockStatus: "in_stock", Stock: 25, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/threepiece-black-georgette.png"}},
-		},
-		{
-			Name: "Lilac Chiffon Suit", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 5500,
-			Description: "Soft lilac chiffon suit with digital print.",
-			StockStatus: "in_stock", Stock: 20, IsFeatured: true,
-			Media: domain.JSONB{"images": []string{"/assets/threepiece-lilac-chiffon.png"}},
-		},
-		{
-			Name: "Peach Cotton Set", Categories: []domain.Category{{ID: getCatID("three-piece")}}, BasePrice: 3200,
-			Description: "Breathable peach cotton three-piece.",
-			StockStatus: "in_stock", Stock: 40, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/threepiece-peach.png"}},
-		},
-
-		// Accessories
-		{
-			Name: "Pearl Choker Set", Categories: []domain.Category{{ID: getCatID("jewelry")}}, BasePrice: 1500,
-			Description: "Elegant imitation pearl choker with earrings.",
-			StockStatus: "in_stock", Stock: 100, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/accessory-pearl-choker.png"}},
-		},
-		{
-			Name: "Silver Oxidized Jhumka", Categories: []domain.Category{{ID: getCatID("jewelry")}}, BasePrice: 850,
-			Description: "Traditional silver oxidized jhumka earrings.",
-			StockStatus: "in_stock", Stock: 150, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/accessory-silver-jhumka.png"}},
-		},
-		{
-			Name: "Velvet Potli Bag", Categories: []domain.Category{{ID: getCatID("bags")}}, BasePrice: 1200,
-			Description: "Embroidered velvet potli bag for weddings.",
-			StockStatus: "in_stock", Stock: 50, IsFeatured: false,
-			Media: domain.JSONB{"images": []string{"/assets/accessory-velvet-potli.png"}},
-		},
+	products := []struct {
+		Name, Slug, SKU, Description, Category string
+		BasePrice                              float64
+		SalePrice                              *float64
+		Stock                                  int
+		IsFeatured                             bool
+		ImagePath                              string // Local path in /assets/
+	}{
+		{"Indigo Silk Panjabi", "indigo-silk-panjabi", "ISP-001", "Premium indigo silk panjabi with intricate embroidery.", "panjabi", 4500, nil, 50, true, "/assets/panjabi-indigo-silk.png"},
+		{"Platinum White Panjabi", "platinum-white-panjabi", "PWP-001", "Classic platinum white cotton panjabi suitable for summer.", "panjabi", 3500, nil, 100, false, "/assets/panjabi-platinum-white.png"},
+		{"Sage Green Panjabi", "sage-green-panjabi", "SGP-001", "Elegant sage green panjabi for festive occasions.", "panjabi", 5200, floatPtr(4500), 30, true, "/assets/panjabi-sage-green.png"},
+		{"Crimson Bridal Banarasi", "crimson-bridal-banarasi", "CBB-001", "Authentic crimson Banarasi saree with gold zari work.", "sarees", 25000, floatPtr(22000), 5, true, "/assets/saree-crimson-bridal.png"},
+		{"Midnight Blue Katan", "midnight-blue-katan", "MBK-001", "Stunning midnight blue katan saree with silver motifs.", "sarees", 12500, nil, 15, true, "/assets/saree-blue-katan.png"},
+		{"Emerald Green Kurti", "emerald-green-kurti", "EGK-001", "Comfortable emerald green cotton kurti.", "kurtis", 2500, floatPtr(1999), 60, false, "/assets/kurti-emerald.png"},
+		{"Ivory Khadi Kurti", "ivory-khadi-kurti", "IKK-001", "Minimalist ivory khadi kurti with wooden buttons.", "kurtis", 2200, nil, 45, false, "/assets/kurti-ivory-khadi.png"},
+		{"Ruby Cotton Kurti", "ruby-cotton-kurti", "RCK-001", "Vibrant ruby red kurti for daily wear.", "kurtis", 1800, nil, 80, false, "/assets/kurti-ruby-cotton.png"},
+		{"Black Georgette Set", "black-georgette-set", "BGS-001", "Stylish black georgette three-piece suit.", "three-piece", 4800, floatPtr(4200), 25, true, "/assets/threepiece-black-georgette.png"},
+		{"Lilac Chiffon Suit", "lilac-chiffon-suit", "LCS-001", "Soft lilac chiffon suit with digital print.", "three-piece", 5500, nil, 20, true, "/assets/threepiece-lilac-chiffon.png"},
+		{"Peach Cotton Set", "peach-cotton-set", "PCS-001", "Breathable peach cotton three-piece.", "three-piece", 3200, nil, 40, false, "/assets/threepiece-peach.png"},
+		{"Pearl Choker Set", "pearl-choker-set", "PCHK-001", "Elegant imitation pearl choker with earrings.", "jewelry", 1500, nil, 100, false, "/assets/accessory-pearl-choker.png"},
+		{"Silver Oxidized Jhumka", "silver-oxidized-jhumka", "SOJ-001", "Traditional silver oxidized jhumka earrings.", "jewelry", 850, floatPtr(699), 150, false, "/assets/accessory-silver-jhumka.png"},
+		{"Velvet Potli Bag", "velvet-potli-bag", "VPB-001", "Embroidered velvet potli bag for weddings.", "bags", 1200, nil, 50, false, "/assets/accessory-velvet-potli.png"},
 	}
 
 	var productIDs []string
 	for _, p := range products {
-		if len(p.Categories) == 0 || p.Categories[0].ID == "" {
-			continue
-		}
+		var id string
+		err := pool.QueryRow(ctx, "SELECT id FROM products WHERE slug = $1", p.Slug).Scan(&id)
+		if err != nil {
+			// Upload image to R2
+			imageURL := uploadImage(p.ImagePath)
+			mediaBytes, _ := json.Marshal([]string{imageURL})
 
-		p.ID = utils.GenerateUUID()
-		p.Slug = utils.GenerateSlug(p.Name)
-		p.SKU = utils.GenerateSlug(p.Name) + "-SKU"
-		p.CreatedAt = time.Now()
-		p.UpdatedAt = time.Now()
-		p.IsActive = true
+			var salePrice interface{} = nil
+			if p.SalePrice != nil {
+				salePrice = *p.SalePrice
+			}
 
-		// UPLOAD TO R2 IF NEEDED
-		// Check if we already have this product to skip re-uploading if possible,
-		// but for seeding let's just do it or check if R2 URL is already there?
-		// To be safe, let's always uploading for now or do a quick check.
-		// Use the first image path from the strict
-		images := p.Media["images"].([]string)
-		if len(images) > 0 {
-			uploadedURL := uploadImage(r2, images[0])
-			p.Media["images"] = []string{uploadedURL}
-		}
+			err = pool.QueryRow(ctx,
+				`INSERT INTO products (name, slug, sku, description, base_price, sale_price, stock, is_featured, is_active, media)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9) RETURNING id`,
+				p.Name, p.Slug, p.SKU, p.Description, p.BasePrice, salePrice, p.Stock, p.IsFeatured, mediaBytes).Scan(&id)
+			if err != nil {
+				log.Printf("    ⚠️ Failed to create product %s: %v", p.Name, err)
+				continue
+			}
+			fmt.Printf("    ✅ Created: %s\n", p.Name)
 
-		var count int64
-		db.Model(&domain.Product{}).Where("name = ?", p.Name).Count(&count)
-		if count == 0 {
-			db.Create(&p)
-			productIDs = append(productIDs, p.ID)
+			// Link to category
+			catID := catMap[p.Category]
+			if catID != "" {
+				_, _ = pool.Exec(ctx, "INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", id, catID)
+			}
 		} else {
-			var existing domain.Product
-			db.Where("name = ?", p.Name).First(&existing)
-			// OPTIONAL: Update the image to the R2 one if we want to "fix" existing data
-			db.Model(&existing).UpdateColumn("media", p.Media)
-
-			productIDs = append(productIDs, existing.ID)
+			// Update existing product's image if needed
+			imageURL := uploadImage(p.ImagePath)
+			mediaBytes, _ := json.Marshal([]string{imageURL})
+			_, _ = pool.Exec(ctx, "UPDATE products SET media = $1 WHERE id = $2", mediaBytes, id)
 		}
+		productIDs = append(productIDs, id)
 	}
 	return productIDs
 }
 
-func seedReviews(db *gorm.DB, users []domain.User, productIDs []string) {
-	log.Println("Seeding Reviews...")
+func seedCollections(ctx context.Context, pool *pgxpool.Pool, productIDs []string) {
+	log.Println("  🏷️ Seeding Collections...")
+
+	collections := []struct {
+		Title, Slug, Description, Story, ImagePath string
+	}{
+		{"Moonlit Silence", "eid-2025", "The Eid 2025 Edit", "In the stillness of the crescent moon, find the luxury of connection.", "/assets/eid-hero.png"},
+		{"Legacy of Loom", "heritage", "The Heritage Edit", "Celebrate the hands that weave history. Authentic Katan, Muslin, and Silk.", "/assets/eid-editorial.png"},
+		{"Wedding Guest", "wedding-guest", "For the golden hours of reunion.", "Designed for elegance and grace at every celebration.", "/assets/eid-hero-group.png"},
+	}
+
+	for _, c := range collections {
+		var id string
+		err := pool.QueryRow(ctx, "SELECT id FROM collections WHERE slug = $1", c.Slug).Scan(&id)
+		if err != nil {
+			// Upload image to R2
+			imageURL := uploadImage(c.ImagePath)
+
+			err = pool.QueryRow(ctx,
+				"INSERT INTO collections (title, slug, description, story, image, is_active) VALUES ($1, $2, $3, $4, $5, true) RETURNING id",
+				c.Title, c.Slug, c.Description, c.Story, imageURL).Scan(&id)
+			if err != nil {
+				log.Printf("    ⚠️ Failed to create collection %s: %v", c.Title, err)
+				continue
+			}
+			fmt.Printf("    ✅ Created: %s\n", c.Title)
+
+			// Add random products to collection
+			numProds := rand.Intn(4) + 2
+			for i := 0; i < numProds && i < len(productIDs); i++ {
+				pid := productIDs[rand.Intn(len(productIDs))]
+				_, _ = pool.Exec(ctx, "INSERT INTO product_collections (product_id, collection_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", pid, id)
+			}
+		} else {
+			// Update existing collection's image
+			imageURL := uploadImage(c.ImagePath)
+			_, _ = pool.Exec(ctx, "UPDATE collections SET image = $1 WHERE id = $2", imageURL, id)
+		}
+	}
+}
+
+func seedReviews(ctx context.Context, pool *pgxpool.Pool, userIDs []string, productIDs []string) {
+	log.Println("  ⭐ Seeding Reviews...")
+
 	comments := []string{
 		"Absolutely loved the fabric quality!",
 		"Fits perfectly, true to size.",
@@ -323,30 +306,81 @@ func seedReviews(db *gorm.DB, users []domain.User, productIDs []string) {
 	}
 
 	for _, pid := range productIDs {
-		// Add 1-3 reviews per product randomly
 		numReviews := rand.Intn(3) + 1
 		for i := 0; i < numReviews; i++ {
-			user := users[rand.Intn(len(users))]
-			rating := rand.Intn(3) + 3 // 3 to 5 stars
+			uid := userIDs[rand.Intn(len(userIDs))]
+			rating := rand.Intn(3) + 3
+			comment := comments[rand.Intn(len(comments))]
 
-			review := domain.Review{
-				ID:        utils.GenerateUUID(),
-				ProductID: pid,
-				UserID:    user.ID,
-				Rating:    rating,
-				Comment:   comments[rand.Intn(len(comments))],
-				CreatedAt: time.Now().Add(-time.Duration(rand.Intn(1000)) * time.Hour),
-			}
-
-			var count int64
-			db.Model(&domain.Review{}).Where("product_id = ? AND user_id = ?", pid, user.ID).Count(&count)
-			if count == 0 {
-				db.Create(&review)
-			}
+			_, _ = pool.Exec(ctx,
+				"INSERT INTO reviews (product_id, user_id, rating, comment) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+				pid, uid, rating, comment)
 		}
 	}
 }
 
-func stringPtr(s string) *string {
-	return &s
+func seedAddresses(ctx context.Context, pool *pgxpool.Pool, userIDs []string) {
+	log.Println("  📍 Seeding Addresses...")
+
+	if len(userIDs) == 0 {
+		return
+	}
+
+	_, _ = pool.Exec(ctx,
+		`INSERT INTO addresses (user_id, label, first_name, last_name, phone, district, thana, address_line, postal_code, is_default)
+		 VALUES ($1, 'Home', 'Alice', 'Wonder', '+8801712345678', 'Dhaka', 'Gulshan', '123 Main Street, House 5', '1212', true)
+		 ON CONFLICT DO NOTHING`,
+		userIDs[0])
+}
+
+func seedCartsAndOrders(ctx context.Context, pool *pgxpool.Pool, userIDs []string, productIDs []string) {
+	log.Println("  🛒 Seeding Carts and Orders...")
+
+	if len(userIDs) == 0 || len(productIDs) == 0 {
+		return
+	}
+
+	// Cart for first user
+	var cartID string
+	err := pool.QueryRow(ctx, "SELECT id FROM carts WHERE user_id = $1", userIDs[0]).Scan(&cartID)
+	if err != nil {
+		err = pool.QueryRow(ctx, "INSERT INTO carts (user_id) VALUES ($1) RETURNING id", userIDs[0]).Scan(&cartID)
+		if err == nil {
+			_, _ = pool.Exec(ctx, "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, 2)", cartID, productIDs[0])
+		}
+	}
+
+	// Order for first user
+	shippingAddr := map[string]string{
+		"firstName":   "Alice",
+		"lastName":    "Wonder",
+		"phone":       "+8801712345678",
+		"district":    "Dhaka",
+		"thana":       "Gulshan",
+		"addressLine": "123 Main Street",
+	}
+	addrBytes, _ := json.Marshal(shippingAddr)
+
+	var orderID string
+	err = pool.QueryRow(ctx,
+		`INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status)
+		 VALUES ($1, 'delivered', 25000, $2, 'cod', 'paid') RETURNING id`,
+		userIDs[0], addrBytes).Scan(&orderID)
+	if err == nil {
+		_, _ = pool.Exec(ctx, "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($1, $2, 1, 25000)", orderID, productIDs[0])
+	}
+}
+
+func seedInventoryLogs(ctx context.Context, pool *pgxpool.Pool, productIDs []string) {
+	log.Println("  📊 Seeding Inventory Logs...")
+
+	for _, pid := range productIDs {
+		_, _ = pool.Exec(ctx,
+			"INSERT INTO inventory_logs (product_id, change_amount, reason, reference_id) VALUES ($1, 50, 'initial_stock', 'SEED-001')",
+			pid)
+	}
+}
+
+func floatPtr(f float64) *float64 {
+	return &f
 }

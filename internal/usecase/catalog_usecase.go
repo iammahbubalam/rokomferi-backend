@@ -38,12 +38,20 @@ func (uc *CatalogUsecase) UpdateProduct(ctx context.Context, product *domain.Pro
 	return uc.repo.UpdateProduct(ctx, product)
 }
 
+func (uc *CatalogUsecase) UpdateProductStatus(ctx context.Context, id string, isActive bool) error {
+	return uc.repo.UpdateProductStatus(ctx, id, isActive)
+}
+
 func (uc *CatalogUsecase) DeleteProduct(ctx context.Context, id string) error {
 	return uc.repo.DeleteProduct(ctx, id)
 }
 
 func (uc *CatalogUsecase) AdjustStock(ctx context.Context, productID string, changeAmount int, reason, referenceID string) error {
 	return uc.repo.UpdateStock(ctx, productID, changeAmount, reason, referenceID)
+}
+
+func (uc *CatalogUsecase) GetInventoryLogs(ctx context.Context, productID string, limit, offset int) ([]domain.InventoryLog, int64, error) {
+	return uc.repo.GetInventoryLogs(ctx, productID, limit, offset)
 }
 
 func (u *CatalogUsecase) GetCategoryTree(ctx context.Context) ([]domain.Category, error) {
@@ -96,6 +104,10 @@ func (u *CatalogUsecase) GetProductDetails(ctx context.Context, slug string) (*d
 	return u.repo.GetProductBySlug(ctx, slug)
 }
 
+func (u *CatalogUsecase) GetProductByID(ctx context.Context, id string) (*domain.Product, error) {
+	return u.repo.GetProductByID(ctx, id)
+}
+
 func (u *CatalogUsecase) AddReview(ctx context.Context, userID, productID string, rating int, comment string) error {
 	if rating < 1 || rating > 5 {
 		return fmt.Errorf("rating must be between 1 and 5")
@@ -123,6 +135,10 @@ func (uc *CatalogUsecase) GetCollections(ctx context.Context) ([]domain.Collecti
 	return uc.repo.GetCollections(ctx)
 }
 
+func (uc *CatalogUsecase) GetAllCollections(ctx context.Context) ([]domain.Collection, error) {
+	return uc.repo.GetAllCollections(ctx)
+}
+
 func (uc *CatalogUsecase) GetCollectionBySlug(ctx context.Context, slug string) (*domain.Collection, error) {
 	return uc.repo.GetCollectionBySlug(ctx, slug)
 }
@@ -137,9 +153,10 @@ func (uc *CatalogUsecase) CreateCollection(ctx context.Context, collection *doma
 	if collection.ID == "" {
 		collection.ID = utils.GenerateUUID()
 	}
-	if !collection.IsActive {
-		collection.IsActive = true
-	}
+	// Removed manual override of IsActive. Frontend sends true by default. If false, it means Draft.
+	// if !collection.IsActive {
+	// 	collection.IsActive = true
+	// }
 	collection.CreatedAt = time.Now()
 	collection.UpdatedAt = time.Now()
 	return uc.repo.CreateCollection(ctx, collection)

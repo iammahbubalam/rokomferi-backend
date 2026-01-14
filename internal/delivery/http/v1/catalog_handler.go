@@ -147,6 +147,16 @@ func (h *CatalogHandler) GetCollections(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(collections)
 }
 
+func (h *CatalogHandler) GetAllCollections(w http.ResponseWriter, r *http.Request) {
+	collections, err := h.catalogUC.GetAllCollections(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(collections)
+}
+
 func (h *CatalogHandler) GetCollectionBySlug(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	if slug == "" {

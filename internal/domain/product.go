@@ -51,7 +51,8 @@ type Product struct {
 	LowStockThreshold int          `json:"lowStockThreshold" gorm:"default:5"`
 	IsFeatured        bool         `json:"isFeatured"`
 	IsActive          bool         `json:"isActive" gorm:"default:true"`
-	Media             JSONB        `json:"media" gorm:"type:jsonb"`
+	Media             RawJSON      `json:"media" gorm:"type:jsonb"`
+	Images            []string     `json:"images" gorm:"-"` // Mapped from Media
 	Attributes        JSONB        `json:"attributes" gorm:"type:jsonb"`
 	Specs             JSONB        `json:"specifications" gorm:"type:jsonb"`
 	CreatedAt         time.Time    `json:"createdAt"`
@@ -68,7 +69,7 @@ type Collection struct {
 	Description string    `json:"description"`
 	Image       string    `json:"image"`
 	Story       string    `json:"story"` // The rich text narrative
-	IsActive    bool      `json:"isActive" gorm:"default:true"`
+	IsActive    bool      `json:"isActive"`
 	Products    []Product `json:"products" gorm:"many2many:product_collections;"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -106,6 +107,7 @@ type ProductRepository interface {
 
 	// Collection Management
 	GetCollections(ctx context.Context) ([]Collection, error)
+	GetAllCollections(ctx context.Context) ([]Collection, error)
 	GetCollectionBySlug(ctx context.Context, slug string) (*Collection, error)
 	CreateCollection(ctx context.Context, collection *Collection) error
 	UpdateCollection(ctx context.Context, collection *Collection) error
@@ -117,10 +119,12 @@ type ProductRepository interface {
 	GetProductBySlug(ctx context.Context, slug string) (*Product, error)
 	GetProductByID(ctx context.Context, id string) (*Product, error)
 	UpdateStock(ctx context.Context, productID string, quantity int, reason, referenceID string) error
+	GetInventoryLogs(ctx context.Context, productID string, limit, offset int) ([]InventoryLog, int64, error)
 
 	// Admin Management
 	CreateProduct(ctx context.Context, product *Product) error
 	UpdateProduct(ctx context.Context, product *Product) error
+	UpdateProductStatus(ctx context.Context, id string, isActive bool) error
 	DeleteProduct(ctx context.Context, id string) error
 
 	// Reviews
@@ -146,6 +150,7 @@ type ProductFilter struct {
 	Sort         string // newest, price_asc, price_desc
 	Limit        int
 	Offset       int
+	IsActive     *bool // nil = all, true = active, false = inactive
 }
 
 // --- Custom Types ---
@@ -161,5 +166,23 @@ func (j *JSONB) Scan(value interface{}) error {
 	if !ok {
 		return errors.New("type assertion to []byte failed")
 	}
-	return json.Unmarshal(bytes, &j)
+	return json.Unmarshal(bytes, j)
+}
+
+type RawJSON json.RawMessage
+
+func (j RawJSON) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return nil, nil
+	}
+	return []byte(j), nil
+}
+
+func (j *RawJSON) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	*j = append((*j)[0:0], bytes...)
+	return nil
 }

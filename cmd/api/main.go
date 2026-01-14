@@ -3,16 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"rokomferi-backend/config"
 	"rokomferi-backend/internal/delivery/http/middleware"
 	v1 "rokomferi-backend/internal/delivery/http/v1"
-	"rokomferi-backend/internal/repository/postgres"
+	sqlcrepo "rokomferi-backend/internal/repository/sqlc"
 	"rokomferi-backend/internal/usecase"
-	postgresPkg "rokomferi-backend/pkg/postgres"
+	"rokomferi-backend/pkg/logger"
 	"rokomferi-backend/pkg/storage"
 	"rokomferi-backend/pkg/utils"
 	"syscall"
@@ -23,28 +22,29 @@ func main() {
 	cfg := config.LoadConfig()
 	utils.SetSecret(cfg.JWTSecret)
 
-	// Initialize Database
-	db, err := postgresPkg.NewClient(cfg.DBUrl)
+	// Initialize Logger
+	logger.Init("development") // Change to "production" in prod env
+	log := logger.Get()
+
+	// Initialize Database with pgx/sqlc
+	pgxPool, err := sqlcrepo.NewPgxPool(context.Background(), cfg.DBUrl)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
-	// Verify connection
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Fatalf("Failed to get sql.DB: %v", err)
-	}
-	if err := sqlDB.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-	log.Println("Successfully connected to PostgreSQL via NeonDB")
+	log.Info().Msg("Successfully connected to PostgreSQL via pgx/sqlc")
+
+	// Initialize Repositories
+	userRepo := sqlcrepo.NewUserRepository(pgxPool)
+	productRepo := sqlcrepo.NewProductRepository(pgxPool)
+	orderRepo := sqlcrepo.NewOrderRepository(pgxPool)
+	txManager := sqlcrepo.NewTransactionManager(pgxPool)
 
 	// Set up Router
 	mux := http.NewServeMux()
 
 	// --- Modules Initialization ---
 
-	// 2. Auth Module
-	userRepo := postgres.NewUserRepository(db)
+	// Auth Module
 	authUC := usecase.NewAuthUsecase(
 		userRepo,
 		cfg.GoogleClientID,
@@ -68,17 +68,14 @@ func main() {
 	}
 	uploadHandler := v1.NewUploadHandler(r2Storage)
 
-	// 2. Catalog Module
-	productRepo := postgres.NewProductRepository(db)
+	// Catalog Module
 	catalogUC := usecase.NewCatalogUsecase(productRepo)
 	catalogHandler := v1.NewCatalogHandler(catalogUC)
 
 	// Admin Catalog Handlers
 	adminCatalogHandler := v1.NewAdminCatalogHandler(catalogUC)
 
-	// 3. Order Module
-	orderRepo := postgres.NewOrderRepository(db)
-	txManager := postgres.NewTransactionManager(db)
+	// Order Module
 	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, txManager)
 	orderHandler := v1.NewOrderHandler(orderUC)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
@@ -113,10 +110,15 @@ func main() {
 		return middleware.AuthMiddleware(middleware.AdminMiddleware(h))
 	}
 
+	// Admin Product Management
+	mux.Handle("GET /api/v1/admin/products", adminMiddleware(adminCatalogHandler.ListProducts))
+	mux.Handle("GET /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.GetProduct))
 	mux.Handle("POST /api/v1/admin/products", adminMiddleware(adminCatalogHandler.CreateProduct))
 	mux.Handle("PUT /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.UpdateProduct))
+	mux.Handle("PATCH /api/v1/admin/products/{id}/status", adminMiddleware(adminCatalogHandler.UpdateProductStatus))
 	mux.Handle("DELETE /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.DeleteProduct))
 	mux.Handle("POST /api/v1/admin/inventory/adjust", adminMiddleware(adminCatalogHandler.AdjustStock))
+	mux.Handle("GET /api/v1/admin/inventory/logs", adminMiddleware(adminCatalogHandler.GetInventoryLogs))
 
 	mux.Handle("GET /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.GetAllCategories))
 	mux.Handle("POST /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.CreateCategory))
@@ -124,6 +126,8 @@ func main() {
 	mux.Handle("DELETE /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.DeleteCategory))
 	mux.Handle("POST /api/v1/admin/categories/reorder", adminMiddleware(adminCatalogHandler.ReorderCategories))
 
+	// Collections
+	mux.Handle("GET /api/v1/admin/collections", adminMiddleware(adminCatalogHandler.GetAllCollections))
 	mux.Handle("POST /api/v1/admin/collections", adminMiddleware(adminCatalogHandler.CreateCollection))
 	mux.Handle("PUT /api/v1/admin/collections/{id}", adminMiddleware(adminCatalogHandler.UpdateCollection))
 	mux.Handle("DELETE /api/v1/admin/collections/{id}", adminMiddleware(adminCatalogHandler.DeleteCollection))
@@ -146,10 +150,11 @@ func main() {
 	})
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("Server starting on %s", addr)
+	log.Info().Msgf("Server starting on %s", addr)
 
-	// Apply CORS
+	// Apply CORS and Request Logger
 	handler := middleware.CORS(mux)
+	handler = middleware.RequestLogger(handler)
 
 	srv := &http.Server{
 		Addr:    addr,
@@ -159,25 +164,25 @@ func main() {
 	// Graceful Shutdown
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
+			log.Fatal().Err(err).Msg("Server failed to start")
 		}
 	}()
 
-	log.Printf("Server starting on %s", addr)
+	log.Info().Msgf("Server starting on %s", addr)
 
 	// Wait for interrupt signal via channel
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Server shutting down...")
+	log.Info().Msg("Server shutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
 
-	log.Println("Server exited properly")
+	log.Info().Msg("Server exited properly")
 }

@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -56,11 +57,46 @@ func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 }
 
 func GenerateUUID() string {
-	// Simple UUID-like string for MVP/Simplicity as requested (Or use google/uuid properly if import allowed)
-	// User said "just use uuid".
-	// To avoid external dep "google/uuid" if not present, i'll use a strong random hex approach or standard lib if available.
-	// Go doesn't have uuid in stdlib. I'll use crypto/rand.
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+type Claims struct {
+	UserID string
+	Email  string
+	Role   string
+}
+
+// ExtractClaims extracts JWT claims from the request header or cookie
+func ExtractClaims(r *http.Request) (*Claims, error) {
+	tokenString := ""
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		tokenString = authHeader[7:]
+	} else {
+		cookie, err := r.Cookie("accessToken")
+		if err == nil {
+			tokenString = cookie.Value
+		}
+	}
+
+	if tokenString == "" {
+		return nil, fmt.Errorf("no token found")
+	}
+
+	mapClaims, err := ValidateJWT(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, _ := mapClaims["sub"].(string)
+	email, _ := mapClaims["email"].(string)
+	role, _ := mapClaims["role"].(string)
+
+	return &Claims{
+		UserID: userID,
+		Email:  email,
+		Role:   role,
+	}, nil
 }

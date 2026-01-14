@@ -2,9 +2,13 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
+	"strconv"
+
+	"github.com/google/uuid"
 )
 
 type AdminCatalogHandler struct {
@@ -56,6 +60,67 @@ func (h *AdminCatalogHandler) CreateProduct(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(product)
 }
 
+func (h *AdminCatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
+	filter := domain.ProductFilter{
+		Limit:  20,
+		Offset: 0,
+		Sort:   "created_at desc",
+	}
+
+	// Pagination
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			filter.Limit = l
+		}
+	}
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			filter.Offset = (p - 1) * filter.Limit
+		}
+	}
+
+	// Sort
+	if sort := r.URL.Query().Get("sort"); sort != "" {
+		filter.Sort = sort
+	}
+
+	// Filter Search
+	if q := r.URL.Query().Get("search"); q != "" {
+		filter.Query = q
+	}
+
+	// Filter Category
+	if cat := r.URL.Query().Get("category"); cat != "" {
+		filter.CategorySlug = cat
+	}
+
+	// Filter Status (isActive)
+	// Expect "true", "false", "all"
+	status := r.URL.Query().Get("isActive")
+	if status == "true" {
+		val := true
+		filter.IsActive = &val
+	} else if status == "false" {
+		val := false
+		filter.IsActive = &val
+	}
+	// if "all" or empty, IsActive remains nil
+
+	products, total, err := h.catalogUC.ListProducts(r.Context(), filter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":  products,
+		"total": total,
+		"page":  (filter.Offset / filter.Limit) + 1,
+		"limit": filter.Limit,
+	})
+}
+
 func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -92,6 +157,30 @@ func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 }
 
+func (h *AdminCatalogHandler) UpdateProductStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Product ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		IsActive bool `json:"isActive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.catalogUC.UpdateProductStatus(r.Context(), id, req.IsActive); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+}
+
 func (h *AdminCatalogHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -106,6 +195,33 @@ func (h *AdminCatalogHandler) DeleteProduct(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+func (h *AdminCatalogHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
+	idOrSlug := r.PathValue("id")
+	if idOrSlug == "" {
+		http.Error(w, "Product ID or Slug required", http.StatusBadRequest)
+		return
+	}
+
+	var product *domain.Product
+	var err error
+
+	// Check if valid UUID
+	if _, uuidErr := uuid.Parse(idOrSlug); uuidErr == nil {
+		product, err = h.catalogUC.GetProductByID(r.Context(), idOrSlug)
+	} else {
+		// Assume Slug
+		product, err = h.catalogUC.GetProductDetails(r.Context(), idOrSlug)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(product)
 }
 
 type adjustStockReq struct {
@@ -139,6 +255,33 @@ func (h *AdminCatalogHandler) AdjustStock(w http.ResponseWriter, r *http.Request
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "stock updated"})
+}
+
+func (h *AdminCatalogHandler) GetInventoryLogs(w http.ResponseWriter, r *http.Request) {
+	productID := r.URL.Query().Get("productId")
+
+	limit := 20
+	offset := 0
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+		offset = (p - 1) * limit
+	}
+
+	logs, total, err := h.catalogUC.GetInventoryLogs(r.Context(), productID, limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":  logs,
+		"total": total,
+		"page":  (offset / limit) + 1,
+		"limit": limit,
+	})
 }
 
 func (h *AdminCatalogHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
@@ -218,12 +361,23 @@ func (h *AdminCatalogHandler) ReorderCategories(w http.ResponseWriter, r *http.R
 
 // --- Collections ---
 
+func (h *AdminCatalogHandler) GetAllCollections(w http.ResponseWriter, r *http.Request) {
+	collections, err := h.catalogUC.GetAllCollections(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(collections)
+}
+
 func (h *AdminCatalogHandler) CreateCollection(w http.ResponseWriter, r *http.Request) {
 	var collection domain.Collection
 	if err := json.NewDecoder(r.Body).Decode(&collection); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
+	fmt.Printf("DEBUG: CreateCollection Payload: %+v, IsActive: %v\n", collection, collection.IsActive)
 
 	if err := h.catalogUC.CreateCollection(r.Context(), &collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
