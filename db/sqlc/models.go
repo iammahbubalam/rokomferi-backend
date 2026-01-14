@@ -69,6 +69,14 @@ type Collection struct {
 	UpdatedAt   pgtype.Timestamp `json:"updated_at"`
 }
 
+type ContentBlock struct {
+	ID         pgtype.UUID        `json:"id"`
+	SectionKey string             `json:"section_key"`
+	Content    []byte             `json:"content"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 type InventoryLog struct {
 	ID           int32            `json:"id"`
 	ProductID    pgtype.UUID      `json:"product_id"`

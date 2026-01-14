@@ -159,3 +159,17 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 	w.WriteHeader(http.StatusOK)
 }
+
+// ListUsers - Admin endpoint to get all users
+func (h *AuthHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.authUC.GetAllUsers(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"users": users,
+	})
+}

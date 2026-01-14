@@ -80,11 +80,16 @@ func main() {
 	orderHandler := v1.NewOrderHandler(orderUC)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 
+	// Content Module
+	contentRepo := sqlcrepo.NewContentRepository(pgxPool)
+	contentUC := usecase.NewContentUsecase(contentRepo)
+	contentHandler := v1.NewContentHandler(contentUC)
+
 	// --- Routes ---
 
 	// Auth
 	mux.HandleFunc("POST /api/v1/auth/google", authHandler.GoogleLogin)
-	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh) // New
+	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
 	mux.Handle("GET /api/v1/auth/me", middleware.AuthMiddleware(http.HandlerFunc(authHandler.Me)))
 
@@ -94,6 +99,9 @@ func main() {
 
 	// Uploads
 	mux.Handle("POST /api/v1/upload", middleware.AuthMiddleware(http.HandlerFunc(uploadHandler.UploadFile)))
+
+	// Content (Public)
+	mux.HandleFunc("GET /api/v1/content/{key}", contentHandler.GetContent)
 
 	// Catalog (Public)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)
@@ -109,6 +117,9 @@ func main() {
 	adminMiddleware := func(h http.HandlerFunc) http.Handler {
 		return middleware.AuthMiddleware(middleware.AdminMiddleware(h))
 	}
+
+	// Admin Content
+	mux.Handle("PUT /api/v1/admin/content/{key}", adminMiddleware(contentHandler.UpsertContent))
 
 	// Admin Product Management
 	mux.Handle("GET /api/v1/admin/products", adminMiddleware(adminCatalogHandler.ListProducts))
@@ -135,9 +146,11 @@ func main() {
 
 	mux.Handle("GET /api/v1/admin/orders", adminMiddleware(adminOrderHandler.ListOrders))
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))
+	mux.Handle("GET /api/v1/admin/users", adminMiddleware(authHandler.ListUsers))
 
 	// Cart & Order (Protected)
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
+
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))

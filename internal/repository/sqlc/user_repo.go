@@ -160,6 +160,18 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 	return sqlcUserToDomain(u), nil
 }
 
+func (r *userRepository) GetAll(ctx context.Context) ([]*domain.User, error) {
+	users, err := r.queries.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.User, len(users))
+	for i, u := range users {
+		result[i] = sqlcUserToDomain(u)
+	}
+	return result, nil
+}
+
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	_, err := r.queries.UpdateUser(ctx, sqlc.UpdateUserParams{
 		ID:        stringToUUID(user.ID),

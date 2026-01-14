@@ -239,3 +239,7 @@ func (u *AuthUsecase) fetchGoogleUserInfo(accessToken string) (*GoogleUser, erro
 func (u *AuthUsecase) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
 	return u.userRepo.GetByID(ctx, id)
 }
+
+func (u *AuthUsecase) GetAllUsers(ctx context.Context) ([]*domain.User, error) {
+	return u.userRepo.GetAll(ctx)
+}

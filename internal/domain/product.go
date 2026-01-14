@@ -2,9 +2,6 @@ package domain
 
 import (
 	"context"
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
 	"time"
 )
 
@@ -153,36 +150,4 @@ type ProductFilter struct {
 	IsActive     *bool // nil = all, true = active, false = inactive
 }
 
-// --- Custom Types ---
-
-type JSONB map[string]interface{}
-
-func (j JSONB) Value() (driver.Value, error) {
-	return json.Marshal(j)
-}
-
-func (j *JSONB) Scan(value interface{}) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(bytes, j)
-}
-
-type RawJSON json.RawMessage
-
-func (j RawJSON) Value() (driver.Value, error) {
-	if len(j) == 0 {
-		return nil, nil
-	}
-	return []byte(j), nil
-}
-
-func (j *RawJSON) Scan(value interface{}) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
-	}
-	*j = append((*j)[0:0], bytes...)
-	return nil
-}
+// --- Custom Types moved to types.go ---

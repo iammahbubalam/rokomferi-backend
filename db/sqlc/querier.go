@@ -54,6 +54,7 @@ type Querier interface {
 	GetChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
 	GetCollectionByID(ctx context.Context, id pgtype.UUID) (Collection, error)
 	GetCollectionBySlug(ctx context.Context, slug string) (Collection, error)
+	GetContentByKey(ctx context.Context, sectionKey string) (ContentBlock, error)
 	GetInventoryLogs(ctx context.Context, arg GetInventoryLogsParams) ([]InventoryLog, error)
 	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
 	GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error)
@@ -76,6 +77,7 @@ type Querier interface {
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
 	GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error)
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
+	ListUsers(ctx context.Context) ([]User, error)
 	RemoveCartItem(ctx context.Context, id pgtype.UUID) error
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
@@ -91,6 +93,7 @@ type Querier interface {
 	UpdateProductStock(ctx context.Context, arg UpdateProductStockParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
+	UpsertContent(ctx context.Context, arg UpsertContentParams) (ContentBlock, error)
 }
 
 var _ Querier = (*Queries)(nil)
