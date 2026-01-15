@@ -18,6 +18,13 @@ INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: UpsertCartItem :one
+INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (cart_id, product_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
+RETURNING *;
+
 -- name: UpdateCartItemQuantity :exec
 UPDATE cart_items SET quantity = $2 WHERE id = $1;
 

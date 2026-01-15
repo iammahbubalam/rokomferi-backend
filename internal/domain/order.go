@@ -57,6 +57,7 @@ type OrderRepository interface {
 	GetCartByUserID(ctx context.Context, userID string) (*Cart, error)
 	CreateCart(ctx context.Context, cart *Cart) error
 	UpdateCart(ctx context.Context, cart *Cart) error // Updates/Adds items
+	UpsertCartItem(ctx context.Context, cartID string, item CartItem) error
 	ClearCart(ctx context.Context, cartID string) error
 
 	// Order

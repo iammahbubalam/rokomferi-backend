@@ -55,33 +55,23 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 	}
 	_ = product
 
-	// Simple add: check if exists, update qty, else append
-	found := false
-	for i, item := range cart.Items {
-		if item.ProductID == productID {
-			cart.Items[i].Quantity += quantity
-			if cart.Items[i].Quantity <= 0 {
-				// Remove item if quantity goes to 0 or below
-				cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
-			}
-			found = true
-			break
-		}
-	}
-	if !found && quantity > 0 {
-		newItem := domain.CartItem{
-			ID:        utils.GenerateUUID(),
-			CartID:    cart.ID,
-			ProductID: productID,
-			Quantity:  quantity,
-		}
-		cart.Items = append(cart.Items, newItem)
+	// Optimized O(1) Upsert
+	cartItem := domain.CartItem{
+		Product:   *product,
+		ProductID: productID,
+		Quantity:  quantity,
 	}
 
-	if err := u.orderRepo.UpdateCart(ctx, cart); err != nil {
+	// Helper to check current qty if adding relatively (logic simplification: assuming passed quantity is what to ADD)
+	// But UpsertCartItem in SQL does: quantity = cart_items.quantity + EXCLUDED.quantity
+	// So we just pass the delta 'quantity'.
+
+	if err := u.orderRepo.UpsertCartItem(ctx, cart.ID, cartItem); err != nil {
 		return nil, err
 	}
-	return cart, nil
+
+	// Fetch fresh cart to return
+	return u.GetMyCart(ctx, userID)
 }
 
 // RemoveFromCart removes a product from the user's cart

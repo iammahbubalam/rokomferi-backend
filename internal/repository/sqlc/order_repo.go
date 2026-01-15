@@ -43,6 +43,7 @@ func sqlcCartToDomain(c sqlc.Cart, items []sqlc.GetCartItemsRow) *domain.Cart {
 			ProductID: uuidToString(item.ProductID),
 			Quantity:  int(item.Quantity),
 			Product: domain.Product{
+				ID:        uuidToString(item.ProductID),
 				Name:      item.Name,
 				Slug:      item.Slug,
 				BasePrice: numericToFloat64(item.BasePrice),
@@ -168,6 +169,21 @@ func (r *orderRepository) UpdateCart(ctx context.Context, cart *domain.Cart) err
 		}
 	}
 	return nil
+}
+
+func (r *orderRepository) UpsertCartItem(ctx context.Context, cartID string, item domain.CartItem) error {
+	var variantID pgtype.UUID
+	if item.VariantID != nil {
+		variantID = stringToUUID(*item.VariantID)
+	}
+
+	_, err := r.queries.UpsertCartItem(ctx, sqlc.UpsertCartItemParams{
+		CartID:    stringToUUID(cartID),
+		ProductID: stringToUUID(item.ProductID),
+		VariantID: variantID,
+		Quantity:  int32(item.Quantity),
+	})
+	return err
 }
 
 func (r *orderRepository) ClearCart(ctx context.Context, cartID string) error {
