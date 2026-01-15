@@ -160,11 +160,13 @@ func main() {
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 
 	// Health Check
-	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
+	healthHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status": "ok", "db": "connected"}`))
-	})
+	}
+	mux.HandleFunc("GET /api/v1/health", healthHandler)
+	mux.HandleFunc("GET /health", healthHandler) // Support root health check for Load Balancers
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Info().Msgf("Server starting on %s", addr)
