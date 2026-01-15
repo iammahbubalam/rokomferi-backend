@@ -78,6 +78,7 @@ type Querier interface {
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
 	GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error)
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
+	HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveCartItem(ctx context.Context, id pgtype.UUID) error
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error

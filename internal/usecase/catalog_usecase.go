@@ -9,11 +9,15 @@ import (
 )
 
 type CatalogUsecase struct {
-	repo domain.ProductRepository
+	repo      domain.ProductRepository
+	orderRepo domain.OrderRepository
 }
 
-func NewCatalogUsecase(repo domain.ProductRepository) *CatalogUsecase {
-	return &CatalogUsecase{repo: repo}
+func NewCatalogUsecase(repo domain.ProductRepository, orderRepo domain.OrderRepository) *CatalogUsecase {
+	return &CatalogUsecase{
+		repo:      repo,
+		orderRepo: orderRepo,
+	}
 }
 
 func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Product) error {
@@ -111,6 +115,15 @@ func (u *CatalogUsecase) GetProductByID(ctx context.Context, id string) (*domain
 func (u *CatalogUsecase) AddReview(ctx context.Context, userID, productID string, rating int, comment string) error {
 	if rating < 1 || rating > 5 {
 		return fmt.Errorf("rating must be between 1 and 5")
+	}
+
+	// VERIFICATION: Check if user purchased the product
+	hasPurchased, err := u.orderRepo.HasPurchasedProduct(ctx, userID, productID)
+	if err != nil {
+		return fmt.Errorf("failed to verify purchase: %w", err)
+	}
+	if !hasPurchased {
+		return fmt.Errorf("you can only review products you have purchased and received")
 	}
 
 	review := &domain.Review{

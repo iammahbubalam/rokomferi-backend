@@ -68,4 +68,7 @@ type OrderRepository interface {
 	// Admin Methods
 	GetAll(ctx context.Context, page, limit int, status string) ([]Order, int64, error)
 	UpdateStatus(ctx context.Context, id, status string) error
+
+	// Verification
+	HasPurchasedProduct(ctx context.Context, userID, productID string) (bool, error)
 }

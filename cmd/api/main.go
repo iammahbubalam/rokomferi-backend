@@ -71,7 +71,7 @@ func main() {
 	uploadHandler := v1.NewUploadHandler(r2Storage)
 
 	// Catalog Module
-	catalogUC := usecase.NewCatalogUsecase(productRepo)
+	catalogUC := usecase.NewCatalogUsecase(productRepo, orderRepo)
 	catalogHandler := v1.NewCatalogHandler(catalogUC)
 
 	// Admin Catalog Handlers

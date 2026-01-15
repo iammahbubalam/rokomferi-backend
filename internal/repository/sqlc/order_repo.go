@@ -317,3 +317,10 @@ func (r *orderRepository) UpdateStatus(ctx context.Context, id, status string) e
 		Status: status,
 	})
 }
+
+func (r *orderRepository) HasPurchasedProduct(ctx context.Context, userID, productID string) (bool, error) {
+	return r.queries.HasPurchasedProduct(ctx, sqlc.HasPurchasedProductParams{
+		UserID:    stringToUUID(userID),
+		ProductID: stringToUUID(productID),
+	})
+}

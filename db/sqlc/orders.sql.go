@@ -409,6 +409,29 @@ func (q *Queries) GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]
 	return items, nil
 }
 
+const hasPurchasedProduct = `-- name: HasPurchasedProduct :one
+SELECT EXISTS (
+    SELECT 1
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.user_id = $1 
+      AND oi.product_id = $2
+      AND o.status = 'delivered'
+)
+`
+
+type HasPurchasedProductParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	ProductID pgtype.UUID `json:"product_id"`
+}
+
+func (q *Queries) HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPurchasedProduct, arg.UserID, arg.ProductID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const removeCartItem = `-- name: RemoveCartItem :exec
 DELETE FROM cart_items WHERE id = $1
 `

@@ -69,3 +69,21 @@ SELECT oi.*, p.name, p.slug, p.media
 FROM order_items oi
 JOIN products p ON p.id = oi.product_id
 WHERE oi.order_id = $1;
+
+-- name: HasPurchasedProduct :one
+SELECT EXISTS (
+    SELECT 1
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.user_id = $1 
+      AND oi.product_id = $2
+      AND o.status = 'delivered'
+);
+SELECT EXISTS (
+    SELECT 1
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.user_id = $1 
+      AND oi.product_id = $2
+      AND o.status = 'delivered'
+);
