@@ -10,9 +10,9 @@ type ContextKey string
 const UserContextKey ContextKey = "user"
 
 type User struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:varchar(50)"` // u_12345
-	Email     string    `json:"email" gorm:"uniqueIndex;not null"`
-	Role      string    `json:"role" gorm:"default:'customer'"`
+	ID        string    `json:"id"` // UUID
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
 	FirstName string    `json:"firstName"`
 	LastName  string    `json:"lastName"`
 	Avatar    string    `json:"avatar"`
@@ -21,8 +21,8 @@ type User struct {
 }
 
 type Address struct {
-	ID     string `json:"id" gorm:"primaryKey"` // addr_...
-	UserID string `json:"userId" gorm:"index"`
+	ID     string `json:"id"` // addr_...
+	UserID string `json:"userId"`
 	Label  string `json:"label"` // "Home", "Office"
 
 	// Contact Info
@@ -47,9 +47,9 @@ type Address struct {
 }
 
 type RefreshToken struct {
-	Token     string    `json:"token" gorm:"primaryKey"` // UUID
-	UserID    string    `json:"userId" gorm:"index"`
-	User      User      `json:"-" gorm:"foreignKey:UserID"`
+	Token     string    `json:"token"` // UUID
+	UserID    string    `json:"userId"`
+	User      User      `json:"-"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
 	Revoked   bool      `json:"revoked"`

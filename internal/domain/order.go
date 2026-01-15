@@ -8,18 +8,18 @@ import (
 // --- Cart Entities ---
 
 type Cart struct {
-	ID        string     `json:"id" gorm:"primaryKey"`
+	ID        string     `json:"id"`
 	UserID    *string    `json:"userId"` // Optional: guest carts could be supported, but for now we link to User if logged in
-	Items     []CartItem `json:"items" gorm:"foreignKey:CartID"`
+	Items     []CartItem `json:"items"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 type CartItem struct {
-	ID        string  `json:"id" gorm:"primaryKey"`
+	ID        string  `json:"id"`
 	CartID    string  `json:"cartId"`
 	ProductID string  `json:"productId"`
-	Product   Product `json:"product" gorm:"foreignKey:ProductID"`
+	Product   Product `json:"product"`
 	VariantID *string `json:"variantId"`
 	Quantity  int     `json:"quantity"`
 }
@@ -27,24 +27,24 @@ type CartItem struct {
 // --- Order Entities ---
 
 type Order struct {
-	ID              string      `json:"id" gorm:"primaryKey"`
+	ID              string      `json:"id"`
 	UserID          string      `json:"userId"`
-	User            User        `json:"user" gorm:"foreignKey:UserID"`
+	User            User        `json:"user"`
 	Status          string      `json:"status"` // pending, processing, shipped, delivered, cancelled
 	TotalAmount     float64     `json:"totalAmount"`
-	ShippingAddress JSONB       `json:"shippingAddress" gorm:"type:jsonb"`
+	ShippingAddress JSONB       `json:"shippingAddress"`
 	PaymentMethod   string      `json:"paymentMethod"`
 	PaymentStatus   string      `json:"paymentStatus"`
-	Items           []OrderItem `json:"items" gorm:"foreignKey:OrderID"`
+	Items           []OrderItem `json:"items"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
 }
 
 type OrderItem struct {
-	ID        string  `json:"id" gorm:"primaryKey"`
+	ID        string  `json:"id"`
 	OrderID   string  `json:"orderId"`
 	ProductID string  `json:"productId"`
-	Product   Product `json:"product" gorm:"foreignKey:ProductID"`
+	Product   Product `json:"product"`
 	VariantID *string `json:"variantId"`
 	Quantity  int     `json:"quantity"`
 	Price     float64 `json:"price"` // Price at time of purchase

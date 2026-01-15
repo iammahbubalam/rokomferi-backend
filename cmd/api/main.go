@@ -104,6 +104,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/content/{key}", contentHandler.GetContent)
 
 	// Catalog (Public)
+	mux.HandleFunc("GET /api/v1/categories", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/products", catalogHandler.ListProducts)
 	mux.HandleFunc("GET /api/v1/products/{slug}", catalogHandler.GetProductDetails)
@@ -152,6 +153,7 @@ func main() {
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
 
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
+	mux.Handle("DELETE /api/v1/cart/{productId}", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.RemoveFromCart)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 

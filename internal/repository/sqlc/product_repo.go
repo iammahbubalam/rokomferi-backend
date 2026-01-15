@@ -146,6 +146,7 @@ func sqlcCategoryToDomain(c sqlc.Category) domain.Category {
 		Image:           ptrString(c.Image),
 		IsActive:        c.IsActive,
 		ShowInNav:       c.ShowInNav,
+		IsFeatured:      c.IsFeatured,
 		MetaTitle:       ptrString(c.MetaTitle),
 		MetaDescription: ptrString(c.MetaDescription),
 		Keywords:        ptrString(c.Keywords),
@@ -292,6 +293,7 @@ func (r *productRepository) CreateCategory(ctx context.Context, category *domain
 		MetaTitle:       strPtr(category.MetaTitle),
 		MetaDescription: strPtr(category.MetaDescription),
 		Keywords:        strPtr(category.Keywords),
+		IsFeatured:      category.IsFeatured,
 	})
 	if err != nil {
 		return err
@@ -319,6 +321,7 @@ func (r *productRepository) UpdateCategory(ctx context.Context, category *domain
 		MetaTitle:       strPtr(category.MetaTitle),
 		MetaDescription: strPtr(category.MetaDescription),
 		Keywords:        strPtr(category.Keywords),
+		IsFeatured:      category.IsFeatured,
 	})
 	return err
 }

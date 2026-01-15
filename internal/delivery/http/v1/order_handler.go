@@ -58,6 +58,27 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(cart)
 }
 
+func (h *OrderHandler) RemoveFromCart(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	productID := r.PathValue("productId")
+	if productID == "" {
+		http.Error(w, "Product ID required", http.StatusBadRequest)
+		return
+	}
+
+	cart, err := h.orderUC.RemoveFromCart(r.Context(), user.ID, productID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cart)
+}
+
 // --- Order Handlers ---
 
 func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {

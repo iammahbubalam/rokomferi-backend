@@ -61,13 +61,14 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 		if item.ProductID == productID {
 			cart.Items[i].Quantity += quantity
 			if cart.Items[i].Quantity <= 0 {
-				// Remove item (simple slice removal logic omitted for brevity, let's assume >0 for add)
+				// Remove item if quantity goes to 0 or below
+				cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
 			}
 			found = true
 			break
 		}
 	}
-	if !found {
+	if !found && quantity > 0 {
 		newItem := domain.CartItem{
 			ID:        utils.GenerateUUID(),
 			CartID:    cart.ID,
@@ -75,6 +76,27 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 			Quantity:  quantity,
 		}
 		cart.Items = append(cart.Items, newItem)
+	}
+
+	if err := u.orderRepo.UpdateCart(ctx, cart); err != nil {
+		return nil, err
+	}
+	return cart, nil
+}
+
+// RemoveFromCart removes a product from the user's cart
+func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, productID string) (*domain.Cart, error) {
+	cart, err := u.GetMyCart(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find and remove the item
+	for i, item := range cart.Items {
+		if item.ProductID == productID {
+			cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
+			break
+		}
 	}
 
 	if err := u.orderRepo.UpdateCart(ctx, cart); err != nil {

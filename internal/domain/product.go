@@ -12,21 +12,22 @@ type TransactionManager interface {
 }
 
 type Category struct {
-	ID              string     `json:"id" gorm:"primaryKey"`
+	ID              string     `json:"id"`
 	Name            string     `json:"name"`
-	Slug            string     `json:"slug" gorm:"uniqueIndex"`
+	Slug            string     `json:"slug"`
 	ParentID        *string    `json:"parentId"`
-	Parent          *Category  `json:"-" gorm:"foreignKey:ParentID"`
-	Children        []Category `json:"children" gorm:"foreignKey:ParentID"`
-	OrderIndex      int        `json:"orderIndex" gorm:"default:0"`
+	Parent          *Category  `json:"-"`
+	Children        []Category `json:"children"`
+	OrderIndex      int        `json:"orderIndex"`
 	Icon            string     `json:"icon"`
 	Image           string     `json:"image"`
-	IsActive        bool       `json:"isActive" gorm:"default:true"`
-	ShowInNav       bool       `json:"showInNav" gorm:"default:true"`
+	IsFeatured      bool       `json:"isFeatured"`
+	IsActive        bool       `json:"isActive"`
+	ShowInNav       bool       `json:"showInNav"`
 	MetaTitle       string     `json:"metaTitle"`
 	MetaDescription string     `json:"metaDescription"`
 	Keywords        string     `json:"keywords"`
-	Products        []Product  `json:"products" gorm:"many2many:product_categories;"`
+	Products        []Product  `json:"products"`
 }
 
 type CategoryReorderItem struct {
@@ -36,44 +37,44 @@ type CategoryReorderItem struct {
 }
 
 type Product struct {
-	ID                string       `json:"id" gorm:"primaryKey"`
+	ID                string       `json:"id"`
 	Name              string       `json:"name"`
-	Slug              string       `json:"slug" gorm:"uniqueIndex"`
-	SKU               string       `json:"sku" gorm:"uniqueIndex"` // Robust Inventory
+	Slug              string       `json:"slug"`
+	SKU               string       `json:"sku"` // Robust Inventory
 	Description       string       `json:"description"`
 	BasePrice         float64      `json:"basePrice"`
 	SalePrice         *float64     `json:"salePrice"`
-	Stock             int          `json:"stock" gorm:"default:0"` // Main inventory
+	Stock             int          `json:"stock"` // Main inventory
 	StockStatus       string       `json:"stockStatus"`
-	LowStockThreshold int          `json:"lowStockThreshold" gorm:"default:5"`
+	LowStockThreshold int          `json:"lowStockThreshold"`
 	IsFeatured        bool         `json:"isFeatured"`
-	IsActive          bool         `json:"isActive" gorm:"default:true"`
-	Media             RawJSON      `json:"media" gorm:"type:jsonb"`
-	Images            []string     `json:"images" gorm:"-"` // Mapped from Media
-	Attributes        JSONB        `json:"attributes" gorm:"type:jsonb"`
-	Specs             JSONB        `json:"specifications" gorm:"type:jsonb"`
+	IsActive          bool         `json:"isActive"`
+	Media             RawJSON      `json:"media"`
+	Images            []string     `json:"images"` // Mapped from Media
+	Attributes        JSONB        `json:"attributes"`
+	Specs             JSONB        `json:"specifications"`
 	CreatedAt         time.Time    `json:"createdAt"`
 	UpdatedAt         time.Time    `json:"updatedAt"`
-	Variants          []Variant    `json:"variants" gorm:"foreignKey:ProductID"`
-	Categories        []Category   `json:"categories" gorm:"many2many:product_categories;"`
-	Collections       []Collection `json:"collections" gorm:"many2many:product_collections;"`
+	Variants          []Variant    `json:"variants"`
+	Categories        []Category   `json:"categories"`
+	Collections       []Collection `json:"collections"`
 }
 
 type Collection struct {
-	ID          string    `json:"id" gorm:"primaryKey"`
+	ID          string    `json:"id"`
 	Title       string    `json:"title"`
-	Slug        string    `json:"slug" gorm:"uniqueIndex"`
+	Slug        string    `json:"slug"`
 	Description string    `json:"description"`
 	Image       string    `json:"image"`
 	Story       string    `json:"story"` // The rich text narrative
 	IsActive    bool      `json:"isActive"`
-	Products    []Product `json:"products" gorm:"many2many:product_collections;"`
+	Products    []Product `json:"products"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type Variant struct {
-	ID        string `json:"id" gorm:"primaryKey"`
+	ID        string `json:"id"`
 	ProductID string `json:"productId"`
 	Name      string `json:"name"`
 	Stock     int    `json:"stock"`
@@ -81,7 +82,7 @@ type Variant struct {
 }
 
 type InventoryLog struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
+	ID           uint      `json:"id"`
 	ProductID    string    `json:"productId"`
 	VariantID    *string   `json:"variantId"`
 	ChangeAmount int       `json:"changeAmount"` // +10 or -5
@@ -130,10 +131,10 @@ type ProductRepository interface {
 }
 
 type Review struct {
-	ID        string    `json:"id" gorm:"primaryKey"`
+	ID        string    `json:"id"`
 	ProductID string    `json:"productId"`
 	UserID    string    `json:"userId"`
-	User      User      `json:"user" gorm:"foreignKey:UserID"`
+	User      User      `json:"user"`
 	Rating    int       `json:"rating"` // 1-5
 	Comment   string    `json:"comment"`
 	CreatedAt time.Time `json:"createdAt"`

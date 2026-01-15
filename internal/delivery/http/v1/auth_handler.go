@@ -145,6 +145,17 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// 1. Attempt to get the refresh token to revoke it
+	cookie, err := r.Cookie("refresh_token")
+	if err == nil && cookie.Value != "" {
+		// Log error but don't fail the logout process if revocation fails (client still wants to clear cookies)
+		if err := h.authUC.RevokeToken(r.Context(), cookie.Value); err != nil {
+			slog.Error("Failed to revoke token on logout", "error", err)
+		} else {
+			slog.Info("Refresh token revoked successfully")
+		}
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "accessToken",
 		MaxAge:   -1,

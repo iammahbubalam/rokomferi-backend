@@ -55,6 +55,7 @@ type Category struct {
 	MetaTitle       *string     `json:"meta_title"`
 	MetaDescription *string     `json:"meta_description"`
 	Keywords        *string     `json:"keywords"`
+	IsFeatured      bool        `json:"is_featured"`
 }
 
 type Collection struct {

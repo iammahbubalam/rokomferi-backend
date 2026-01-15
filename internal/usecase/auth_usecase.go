@@ -159,6 +159,10 @@ func (u *AuthUsecase) RefreshAccessToken(ctx context.Context, refreshTokenStr st
 	return newAccessToken, err
 }
 
+func (u *AuthUsecase) RevokeToken(ctx context.Context, refreshTokenStr string) error {
+	return u.userRepo.RevokeRefreshToken(ctx, refreshTokenStr)
+}
+
 // --- Address Management ---
 
 func (u *AuthUsecase) AddAddress(ctx context.Context, userID string, req domain.Address) (*domain.Address, error) {
