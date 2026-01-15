@@ -41,6 +41,14 @@ func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	minPrice, _ := strconv.ParseFloat(query.Get("min_price"), 64)
 	maxPrice, _ := strconv.ParseFloat(query.Get("max_price"), 64)
 
+	var isFeatured *bool
+	if val := query.Get("is_featured"); val != "" {
+		b, err := strconv.ParseBool(val)
+		if err == nil {
+			isFeatured = &b
+		}
+	}
+
 	filter := domain.ProductFilter{
 		CategorySlug: query.Get("category_slug"),
 		Query:        query.Get("q"),
@@ -49,6 +57,7 @@ func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		MaxPrice:     maxPrice,
 		Limit:        limit,
 		Offset:       (page - 1) * limit,
+		IsFeatured:   isFeatured,
 	}
 
 	products, total, err := h.catalogUC.ListProducts(r.Context(), filter)

@@ -455,21 +455,28 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 	}
 
 	// Default to true if nil (show active products by default)
-	isActive := true
+	var isActive *bool
+	trueVal := true
 	if filter.IsActive != nil {
-		isActive = *filter.IsActive
+		isActive = filter.IsActive
+	} else {
+		isActive = &trueVal
 	}
 
 	products, err := r.queries.GetProducts(ctx, sqlc.GetProductsParams{
-		Column1: isActive,
-		Limit:   limit,
-		Offset:  int32(filter.Offset),
+		IsActive:   isActive,
+		IsFeatured: filter.IsFeatured,
+		Limit:      limit,
+		Offset:     int32(filter.Offset),
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 
-	count, err := r.queries.CountProducts(ctx, isActive)
+	count, err := r.queries.CountProducts(ctx, sqlc.CountProductsParams{
+		IsActive:   isActive,
+		IsFeatured: filter.IsFeatured,
+	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -496,12 +503,23 @@ func (r *productRepository) GetProductBySlug(ctx context.Context, slug string) (
 		prod.Variants[i] = sqlcVariantToDomain(v)
 	}
 
-	// Load categories
+	// Load categories (Optimized Batch Fetch)
 	catIDs, _ := r.queries.GetCategoryIDsForProduct(ctx, p.ID)
-	prod.Categories = make([]domain.Category, len(catIDs))
-	for i, catID := range catIDs {
-		cat, _ := r.queries.GetCategoryByID(ctx, catID)
-		prod.Categories[i] = sqlcCategoryToDomain(cat)
+	if len(catIDs) > 0 {
+		// Fetch all categories in 1 query
+		cats, err := r.queries.GetCategoriesByIDs(ctx, catIDs)
+		if err != nil {
+			// Log error but don't fail, return empty categories
+			// or we could return error. For now, best effort.
+			return nil, err
+		}
+
+		prod.Categories = make([]domain.Category, len(cats))
+		for i, c := range cats {
+			prod.Categories[i] = sqlcCategoryToDomain(c)
+		}
+	} else {
+		prod.Categories = []domain.Category{}
 	}
 
 	return &prod, nil
@@ -521,12 +539,19 @@ func (r *productRepository) GetProductByID(ctx context.Context, id string) (*dom
 		prod.Variants[i] = sqlcVariantToDomain(v)
 	}
 
-	// Load categories
+	// Load categories (Optimized Batch Fetch)
 	catIDs, _ := r.queries.GetCategoryIDsForProduct(ctx, p.ID)
-	prod.Categories = make([]domain.Category, len(catIDs))
-	for i, catID := range catIDs {
-		cat, _ := r.queries.GetCategoryByID(ctx, catID)
-		prod.Categories[i] = sqlcCategoryToDomain(cat)
+	if len(catIDs) > 0 {
+		cats, err := r.queries.GetCategoriesByIDs(ctx, catIDs)
+		if err != nil {
+			return nil, err
+		}
+		prod.Categories = make([]domain.Category, len(cats))
+		for i, c := range cats {
+			prod.Categories[i] = sqlcCategoryToDomain(c)
+		}
+	} else {
+		prod.Categories = []domain.Category{}
 	}
 
 	return &prod, nil

@@ -149,6 +149,7 @@ type ProductFilter struct {
 	Limit        int
 	Offset       int
 	IsActive     *bool // nil = all, true = active, false = inactive
+	IsFeatured   *bool
 }
 
 // --- Custom Types moved to types.go ---

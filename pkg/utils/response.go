@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/goccy/go-json"
 )
 
 func WriteJSON(w http.ResponseWriter, status int, data interface{}) {

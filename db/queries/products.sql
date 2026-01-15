@@ -1,11 +1,14 @@
 -- name: GetProducts :many
 SELECT * FROM products 
-WHERE ($1::boolean IS NULL OR is_active = $1)
+WHERE (sqlc.narg('is_active')::boolean IS NULL OR is_active = sqlc.narg('is_active'))
+AND (sqlc.narg('is_featured')::boolean IS NULL OR is_featured = sqlc.narg('is_featured'))
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
+LIMIT $1 OFFSET $2;
 
 -- name: CountProducts :one
-SELECT COUNT(*) FROM products WHERE ($1::boolean IS NULL OR is_active = $1);
+SELECT COUNT(*) FROM products 
+WHERE (sqlc.narg('is_active')::boolean IS NULL OR is_active = sqlc.narg('is_active'))
+AND (sqlc.narg('is_featured')::boolean IS NULL OR is_featured = sqlc.narg('is_featured'));
 
 -- name: GetProductBySlug :one
 SELECT * FROM products WHERE slug = $1;

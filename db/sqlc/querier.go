@@ -18,7 +18,7 @@ type Querier interface {
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
 	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
-	CountProducts(ctx context.Context, dollar_1 bool) (int64, error)
+	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
 	CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error)
 	CountProductsWithSearch(ctx context.Context, arg CountProductsWithSearchParams) (int64, error)
 	CreateAddress(ctx context.Context, arg CreateAddressParams) (Address, error)
@@ -48,6 +48,7 @@ type Querier interface {
 	GetCartByUserID(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	GetCartItemByProductID(ctx context.Context, arg GetCartItemByProductIDParams) (CartItem, error)
 	GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCartItemsRow, error)
+	GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Category, error)
 	GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category, error)
 	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
 	GetCategoryIDsForProduct(ctx context.Context, productID pgtype.UUID) ([]pgtype.UUID, error)

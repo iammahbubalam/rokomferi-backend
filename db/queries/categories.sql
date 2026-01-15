@@ -40,3 +40,6 @@ DELETE FROM categories WHERE id = $1;
 
 -- name: UpdateCategoryOrder :exec
 UPDATE categories SET order_index = $2, parent_id = $3 WHERE id = $1;
+
+-- name: GetCategoriesByIDs :many
+SELECT * FROM categories WHERE id = ANY($1::uuid[]);

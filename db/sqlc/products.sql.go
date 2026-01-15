@@ -37,11 +37,18 @@ func (q *Queries) ClearProductCategories(ctx context.Context, productID pgtype.U
 }
 
 const countProducts = `-- name: CountProducts :one
-SELECT COUNT(*) FROM products WHERE ($1::boolean IS NULL OR is_active = $1)
+SELECT COUNT(*) FROM products 
+WHERE ($1::boolean IS NULL OR is_active = $1)
+AND ($2::boolean IS NULL OR is_featured = $2)
 `
 
-func (q *Queries) CountProducts(ctx context.Context, dollar_1 bool) (int64, error) {
-	row := q.db.QueryRow(ctx, countProducts, dollar_1)
+type CountProductsParams struct {
+	IsActive   *bool `json:"is_active"`
+	IsFeatured *bool `json:"is_featured"`
+}
+
+func (q *Queries) CountProducts(ctx context.Context, arg CountProductsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countProducts, arg.IsActive, arg.IsFeatured)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -268,19 +275,26 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 
 const getProducts = `-- name: GetProducts :many
 SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at FROM products 
-WHERE ($1::boolean IS NULL OR is_active = $1)
+WHERE ($3::boolean IS NULL OR is_active = $3)
+AND ($4::boolean IS NULL OR is_featured = $4)
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $1 OFFSET $2
 `
 
 type GetProductsParams struct {
-	Column1 bool  `json:"column_1"`
-	Limit   int32 `json:"limit"`
-	Offset  int32 `json:"offset"`
+	Limit      int32 `json:"limit"`
+	Offset     int32 `json:"offset"`
+	IsActive   *bool `json:"is_active"`
+	IsFeatured *bool `json:"is_featured"`
 }
 
 func (q *Queries) GetProducts(ctx context.Context, arg GetProductsParams) ([]Product, error) {
-	rows, err := q.db.Query(ctx, getProducts, arg.Column1, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getProducts,
+		arg.Limit,
+		arg.Offset,
+		arg.IsActive,
+		arg.IsFeatured,
+	)
 	if err != nil {
 		return nil, err
 	}

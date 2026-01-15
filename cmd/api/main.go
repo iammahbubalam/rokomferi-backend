@@ -16,6 +16,8 @@ import (
 	"rokomferi-backend/pkg/utils"
 	"syscall"
 	"time"
+
+	"github.com/NYTimes/gziphandler"
 )
 
 func main() {
@@ -27,7 +29,7 @@ func main() {
 	log := logger.Get()
 
 	// Initialize Database with pgx/sqlc
-	pgxPool, err := sqlcrepo.NewPgxPool(context.Background(), cfg.DBUrl)
+	pgxPool, err := sqlcrepo.NewPgxPool(context.Background(), cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
@@ -170,6 +172,9 @@ func main() {
 	// Apply CORS and Request Logger
 	handler := middleware.CORS(mux)
 	handler = middleware.RequestLogger(handler)
+	// Rate Limit: 50 req/s, burst 100
+	handler = middleware.RateLimitMiddleware(50, 100)(handler)
+	handler = gziphandler.GzipHandler(handler)
 
 	srv := &http.Server{
 		Addr:    addr,

@@ -19,6 +19,10 @@ type Config struct {
 	GoogleClientSecret string
 	AccessTokenExpiry  time.Duration
 	RefreshTokenExpiry time.Duration
+	// DB Config
+	DBMaxConns        int32
+	DBMinConns        int32
+	DBMaxConnIdleTime time.Duration
 	// R2 Storage
 	R2AccountID       string
 	R2AccessKeyID     string
@@ -44,6 +48,10 @@ func LoadConfig() *Config {
 		GoogleTokenInfoURL: getEnv("GOOGLE_TOKEN_INFO_URL", "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=%s"),
 		AccessTokenExpiry:  getDurationEnv("ACCESS_TOKEN_EXPIRY", time.Hour*24),    // Default 24h
 		RefreshTokenExpiry: getDurationEnv("REFRESH_TOKEN_EXPIRY", time.Hour*24*7), // Default 7d
+
+		DBMaxConns:        getInt32Env("DB_MAX_CONNS", 50),
+		DBMinConns:        getInt32Env("DB_MIN_CONNS", 10),
+		DBMaxConnIdleTime: getDurationEnv("DB_MAX_CONN_IDLE_TIME", time.Minute*15),
 
 		// R2 Storage
 		R2AccountID:       getEnv("R2_ACCOUNT_ID", ""),
