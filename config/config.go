@@ -37,7 +37,7 @@ func LoadConfig() *Config {
 		log.Println("No .env file found or error loading it, relying on system env vars")
 	}
 
-	return &Config{
+	cfg := &Config{
 		Port:               getEnv("PORT", "8080"),
 		Env:                getEnv("ENV", "development"),
 		DBUrl:              getEnv("DB_DSN", ""),
@@ -59,6 +59,21 @@ func LoadConfig() *Config {
 		R2AccessKeySecret: getEnv("R2_ACCESS_KEY_SECRET", ""),
 		R2BucketName:      getEnv("R2_BUCKET_NAME", ""),
 		R2PublicURL:       getEnv("R2_PUBLIC_URL", ""),
+	}
+
+	cfg.Validate()
+	return cfg
+}
+
+func (c *Config) Validate() {
+	if c.DBUrl == "" {
+		log.Fatal("CRITICAL: DB_DSN environment variable is required")
+	}
+	if c.JWTSecret == "default_secret_CHANGE_ME" {
+		log.Println("WARNING: Using default JWT secret. Setting up for failure in production.")
+	}
+	if c.GoogleClientID == "" {
+		log.Fatal("CRITICAL: GOOGLE_CLIENT_ID is required")
 	}
 }
 
