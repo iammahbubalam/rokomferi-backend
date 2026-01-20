@@ -211,6 +211,31 @@ func (r *userRepository) AddAddress(ctx context.Context, addr *domain.Address) e
 	return nil
 }
 
+func (r *userRepository) UpdateAddress(ctx context.Context, addr *domain.Address) error {
+	updated, err := r.queries.UpdateAddress(ctx, sqlc.UpdateAddressParams{
+		ID:           stringToUUID(addr.ID),
+		UserID:       stringToUUID(addr.UserID),
+		Label:        strPtr(addr.Label),
+		ContactEmail: strPtr(addr.ContactEmail),
+		Phone:        strPtr(addr.Phone),
+		FirstName:    strPtr(addr.FirstName),
+		LastName:     strPtr(addr.LastName),
+		DeliveryZone: strPtr(addr.DeliveryZone),
+		Division:     strPtr(addr.Division),
+		District:     strPtr(addr.District),
+		Thana:        strPtr(addr.Thana),
+		AddressLine:  strPtr(addr.AddressLine),
+		Landmark:     strPtr(addr.Landmark),
+		PostalCode:   strPtr(addr.PostalCode),
+		IsDefault:    addr.IsDefault,
+	})
+	if err != nil {
+		return err
+	}
+	addr.CreatedAt = pgtimeToTime(updated.CreatedAt)
+	return nil
+}
+
 func (r *userRepository) GetAddresses(ctx context.Context, userID string) ([]domain.Address, error) {
 	addrs, err := r.queries.GetAddressesByUserID(ctx, stringToUUID(userID))
 	if err != nil {

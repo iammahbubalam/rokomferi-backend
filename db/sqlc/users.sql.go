@@ -251,6 +251,71 @@ func (q *Queries) SaveRefreshToken(ctx context.Context, arg SaveRefreshTokenPara
 	return i, err
 }
 
+const updateAddress = `-- name: UpdateAddress :one
+UPDATE addresses
+SET label = $2, contact_email = $3, phone = $4, first_name = $5, last_name = $6, delivery_zone = $7, division = $8, district = $9, thana = $10, address_line = $11, landmark = $12, postal_code = $13, is_default = $14
+WHERE id = $1 AND user_id = $15
+RETURNING id, user_id, label, contact_email, phone, first_name, last_name, delivery_zone, division, district, thana, address_line, landmark, postal_code, is_default, created_at
+`
+
+type UpdateAddressParams struct {
+	ID           pgtype.UUID `json:"id"`
+	Label        *string     `json:"label"`
+	ContactEmail *string     `json:"contact_email"`
+	Phone        *string     `json:"phone"`
+	FirstName    *string     `json:"first_name"`
+	LastName     *string     `json:"last_name"`
+	DeliveryZone *string     `json:"delivery_zone"`
+	Division     *string     `json:"division"`
+	District     *string     `json:"district"`
+	Thana        *string     `json:"thana"`
+	AddressLine  *string     `json:"address_line"`
+	Landmark     *string     `json:"landmark"`
+	PostalCode   *string     `json:"postal_code"`
+	IsDefault    bool        `json:"is_default"`
+	UserID       pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) UpdateAddress(ctx context.Context, arg UpdateAddressParams) (Address, error) {
+	row := q.db.QueryRow(ctx, updateAddress,
+		arg.ID,
+		arg.Label,
+		arg.ContactEmail,
+		arg.Phone,
+		arg.FirstName,
+		arg.LastName,
+		arg.DeliveryZone,
+		arg.Division,
+		arg.District,
+		arg.Thana,
+		arg.AddressLine,
+		arg.Landmark,
+		arg.PostalCode,
+		arg.IsDefault,
+		arg.UserID,
+	)
+	var i Address
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Label,
+		&i.ContactEmail,
+		&i.Phone,
+		&i.FirstName,
+		&i.LastName,
+		&i.DeliveryZone,
+		&i.Division,
+		&i.District,
+		&i.Thana,
+		&i.AddressLine,
+		&i.Landmark,
+		&i.PostalCode,
+		&i.IsDefault,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET email = $2, role = $3, first_name = $4, last_name = $5, avatar = $6

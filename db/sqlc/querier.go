@@ -85,6 +85,7 @@ type Querier interface {
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error
 	SaveRefreshToken(ctx context.Context, arg SaveRefreshTokenParams) (RefreshToken, error)
+	UpdateAddress(ctx context.Context, arg UpdateAddressParams) (Address, error)
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) error
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	UpdateCategoryOrder(ctx context.Context, arg UpdateCategoryOrderParams) error

@@ -42,24 +42,24 @@ func RequestLogger(next http.Handler) http.Handler {
 			userID = claims.UserID
 		}
 
-		// Only log errors and warnings to reduce noise and improve performance
-		if wrapped.statusCode >= 400 {
-			logEvent := reqLogger.Warn()
-			if wrapped.statusCode >= 500 {
-				logEvent = reqLogger.Error()
-			}
-
-			logEvent.
-				Str("method", r.Method).
-				Str("path", r.URL.Path).
-				Str("query", r.URL.RawQuery).
-				Int("status", wrapped.statusCode).
-				Dur("duration_ms", duration).
-				Str("ip", getClientIP(r)).
-				Str("user_agent", r.UserAgent()).
-				Str("user_id", userID).
-				Msg("HTTP")
+		// Log all requests
+		logEvent := reqLogger.Info()
+		if wrapped.statusCode >= 500 {
+			logEvent = reqLogger.Error()
+		} else if wrapped.statusCode >= 400 {
+			logEvent = reqLogger.Warn()
 		}
+
+		logEvent.
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Str("query", r.URL.RawQuery).
+			Int("status", wrapped.statusCode).
+			Dur("duration_ms", duration).
+			Str("ip", getClientIP(r)).
+			Str("user_agent", r.UserAgent()).
+			Str("user_id", userID).
+			Msg("HTTP")
 	})
 }
 

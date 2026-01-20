@@ -53,7 +53,26 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 	if err != nil {
 		return nil, err
 	}
-	_ = product
+
+	// LOCK 2: API Gatekeeper - Strict Stock Validation
+
+	// Check existing quantity in cart
+	existingQty := 0
+	for _, item := range cart.Items {
+		if item.ProductID == productID {
+			existingQty = item.Quantity
+			break
+		}
+	}
+
+	totalRequested := existingQty + quantity
+
+	if product.Stock < totalRequested {
+		return nil, fmt.Errorf("insufficient stock for %s (requested total: %d, available: %d)", product.Name, totalRequested, product.Stock)
+	}
+	if product.StockStatus == "out_of_stock" {
+		return nil, fmt.Errorf("product %s is currently out of stock", product.Name)
+	}
 
 	// Optimized O(1) Upsert
 	cartItem := domain.CartItem{
@@ -98,28 +117,55 @@ func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, produc
 // --- Order Logic ---
 
 type CheckoutReq struct {
-	Address domain.JSONB `json:"address"`
-	Payment string       `json:"paymentMethod"`
+	Address domain.JSONB      `json:"address"`
+	Payment string            `json:"paymentMethod"`
+	Items   []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
+}
+
+type CheckoutItemReq struct {
+	ProductID string `json:"productId"`
+	Quantity  int    `json:"quantity"`
 }
 
 func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req CheckoutReq) (*domain.Order, error) {
-	cart, err := u.GetMyCart(ctx, userID)
-	if err != nil || len(cart.Items) == 0 {
-		return nil, fmt.Errorf("cart is empty")
+	// 1. Determine Source (Direct vs Cart)
+	var processItems []domain.CartItem
+	isDirect := false
+	var cartID string
+
+	if len(req.Items) > 0 {
+		// Direct Checkout Mode
+		isDirect = true
+		for _, item := range req.Items {
+			processItems = append(processItems, domain.CartItem{
+				ProductID: item.ProductID,
+				Quantity:  item.Quantity,
+			})
+		}
+	} else {
+		// Normal Cart Checkout Mode
+		cart, err := u.GetMyCart(ctx, userID)
+		if err != nil || len(cart.Items) == 0 {
+			return nil, fmt.Errorf("cart is empty")
+		}
+		processItems = cart.Items
+		cartID = cart.ID
 	}
 
 	// Calculate Total with FRESH prices and check Stock
 	var total float64
 	var orderItems []domain.OrderItem
 
-	for _, item := range cart.Items {
+	for _, item := range processItems {
 		// Re-fetch product to ensure price/stock is up-to-date.
-		// relying on Cart's cached "Product" might be unsafe if price changed since add-to-cart.
 		product, err := u.productRepo.GetProductByID(ctx, item.ProductID)
 		if err != nil {
 			return nil, fmt.Errorf("product %s not found: %v", item.ProductID, err)
 		}
 
+		if product.Stock < item.Quantity { // Explicit Quantity Check
+			return nil, fmt.Errorf("product %s has insufficient stock (requested: %d, available: %d)", product.Name, item.Quantity, product.Stock)
+		}
 		if product.StockStatus == "out_of_stock" {
 			return nil, fmt.Errorf("product %s is out of stock", product.Name)
 		}
@@ -151,7 +197,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 	}
 
 	// Wrap Order Creation, Cart Clearing, and Stock Update in Transaction
-	err = u.txManager.Do(ctx, func(txCtx context.Context) error {
+	err := u.txManager.Do(ctx, func(txCtx context.Context) error {
 		// 1. Create Order
 		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
 			return fmt.Errorf("failed to create order: %v", err)
@@ -165,9 +211,11 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			}
 		}
 
-		// 3. Clear Cart
-		if err := u.orderRepo.ClearCart(txCtx, cart.ID); err != nil {
-			return fmt.Errorf("failed to clear cart: %v", err)
+		// 3. Clear Cart (ONLY if not direct checkout)
+		if !isDirect && cartID != "" {
+			if err := u.orderRepo.ClearCart(txCtx, cartID); err != nil {
+				return fmt.Errorf("failed to clear cart: %v", err)
+			}
 		}
 
 		return nil

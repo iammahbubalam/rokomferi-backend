@@ -106,6 +106,35 @@ func (h *AuthHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(addr)
 }
 
+func (h *AuthHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := user.ID
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Address ID required", http.StatusBadRequest)
+		return
+	}
+
+	var req domain.Address
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+	req.ID = id
+
+	addr, err := h.authUC.UpdateAddress(r.Context(), userID, req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(addr)
+}
+
 func (h *AuthHandler) GetAddresses(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
 	if !ok {

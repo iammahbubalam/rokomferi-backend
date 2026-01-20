@@ -98,6 +98,7 @@ func main() {
 	// User Profile / Address
 	mux.Handle("POST /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.AddAddress)))
 	mux.Handle("GET /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.GetAddresses)))
+	mux.Handle("PUT /api/v1/user/addresses/{id}", middleware.AuthMiddleware(http.HandlerFunc(authHandler.UpdateAddress)))
 
 	// Uploads
 	mux.Handle("POST /api/v1/upload", middleware.AuthMiddleware(http.HandlerFunc(uploadHandler.UploadFile)))
@@ -109,6 +110,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/categories", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/products", catalogHandler.ListProducts)
+	mux.HandleFunc("GET /api/v1/product/{id}", catalogHandler.GetProductByID)
 	mux.HandleFunc("GET /api/v1/products/{slug}", catalogHandler.GetProductDetails)
 	mux.HandleFunc("GET /api/v1/products/{id}/reviews", catalogHandler.GetReviews)                                          // Public
 	mux.Handle("POST /api/v1/products/{id}/reviews", middleware.AuthMiddleware(http.HandlerFunc(catalogHandler.AddReview))) // Protected

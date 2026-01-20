@@ -177,6 +177,19 @@ func (u *AuthUsecase) AddAddress(ctx context.Context, userID string, req domain.
 	return &req, nil
 }
 
+func (u *AuthUsecase) UpdateAddress(ctx context.Context, userID string, req domain.Address) (*domain.Address, error) {
+	req.UserID = userID
+	if req.ID == "" {
+		return nil, fmt.Errorf("address ID required")
+	}
+	// TODO: Verify this address belongs to user? Repo update checks userID=Arg, so safe.
+
+	if err := u.userRepo.UpdateAddress(ctx, &req); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
 func (u *AuthUsecase) GetAddresses(ctx context.Context, userID string) ([]domain.Address, error) {
 	return u.userRepo.GetAddresses(ctx, userID)
 }

@@ -98,7 +98,18 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 
 	order, err := h.orderUC.Checkout(r.Context(), user.ID, req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError) // 400 if cart empty, 500 otherwise. Simplified for now.
+		w.Header().Set("Content-Type", "application/json")
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+
+		if contains(errMsg, "insufficient stock") || contains(errMsg, "out of stock") || contains(errMsg, "cart is empty") || contains(errMsg, "not found") {
+			statusCode = http.StatusBadRequest
+		}
+
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": errMsg,
+		})
 		return
 	}
 
@@ -119,4 +130,8 @@ func (h *OrderHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[0:len(substr)] == substr || contains(s[1:], substr)))
 }

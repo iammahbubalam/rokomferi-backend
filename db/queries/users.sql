@@ -23,6 +23,13 @@ RETURNING *;
 -- name: GetAddressesByUserID :many
 SELECT * FROM addresses WHERE user_id = $1 ORDER BY created_at DESC;
 
+-- name: UpdateAddress :one
+UPDATE addresses
+SET label = $2, contact_email = $3, phone = $4, first_name = $5, last_name = $6, delivery_zone = $7, division = $8, district = $9, thana = $10, address_line = $11, landmark = $12, postal_code = $13, is_default = $14
+WHERE id = $1 AND user_id = $15
+RETURNING *;
+
+
 -- name: SaveRefreshToken :one
 INSERT INTO refresh_tokens (token, user_id, expires_at, device)
 VALUES ($1, $2, $3, $4)

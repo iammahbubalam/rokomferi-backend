@@ -98,6 +98,23 @@ func (h *CatalogHandler) GetProductDetails(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(product)
 }
 
+func (h *CatalogHandler) GetProductByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Product ID required", http.StatusBadRequest)
+		return
+	}
+
+	product, err := h.catalogUC.GetProductByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Product not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(product)
+}
+
 func (h *CatalogHandler) AddReview(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
 	if !ok {

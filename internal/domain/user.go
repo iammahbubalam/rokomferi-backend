@@ -65,6 +65,7 @@ type UserRepository interface {
 
 	// Addresses
 	AddAddress(ctx context.Context, addr *Address) error
+	UpdateAddress(ctx context.Context, addr *Address) error
 	GetAddresses(ctx context.Context, userID string) ([]Address, error)
 
 	// Refresh Tokens
