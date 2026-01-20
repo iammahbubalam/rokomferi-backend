@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
@@ -51,6 +52,7 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 
 	cart, err := h.orderUC.AddToCart(r.Context(), user.ID, req.ProductID, req.Quantity)
 	if err != nil {
+		slog.Error("AddToCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -72,6 +74,7 @@ func (h *OrderHandler) RemoveFromCart(w http.ResponseWriter, r *http.Request) {
 
 	cart, err := h.orderUC.RemoveFromCart(r.Context(), user.ID, productID)
 	if err != nil {
+		slog.Error("RemoveFromCart failed", "user_id", user.ID, "product_id", productID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
