@@ -2,6 +2,7 @@ package sqlcrepo
 
 import (
 	"context"
+	"fmt"
 	"rokomferi-backend/internal/domain"
 
 	// Import the GENERATED SQLC package alias
@@ -35,11 +36,16 @@ func (r *couponRepository) CreateCoupon(ctx context.Context, c *domain.Coupon) e
 		IsActive:   &isActive,
 	}
 
-	// Convert checks
-	val, _ := Float64ToNumeric(c.Value)
+	// Convert Value - This is required, don't ignore errors
+	val, err := Float64ToNumeric(c.Value)
+	if err != nil {
+		return fmt.Errorf("invalid coupon value: %w", err)
+	}
 	params.Value = val
-	min, _ := Float64ToNumeric(c.MinSpend)
-	params.MinSpend = min
+
+	// Convert MinSpend (optional, default 0)
+	minSpend, _ := Float64ToNumeric(c.MinSpend)
+	params.MinSpend = minSpend
 
 	if c.StartAt != nil {
 		params.StartAt = pgtype.Timestamp{Time: *c.StartAt, Valid: true}
@@ -48,8 +54,15 @@ func (r *couponRepository) CreateCoupon(ctx context.Context, c *domain.Coupon) e
 		params.ExpiresAt = pgtype.Timestamp{Time: *c.ExpiresAt, Valid: true}
 	}
 
-	_, err := r.q.CreateCoupon(ctx, params)
-	return err
+	result, err := r.q.CreateCoupon(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	// L9: Set the ID from the database response
+	c.ID = uuid.UUID(result.ID.Bytes)
+	c.CreatedAt = result.CreatedAt.Time
+	return nil
 }
 
 func (r *couponRepository) GetCouponByCode(ctx context.Context, code string) (*domain.Coupon, error) {
@@ -191,9 +204,12 @@ func NumericToFloat64(n pgtype.Numeric) float64 {
 }
 
 // Float64ToNumeric converts float64 to pgtype.Numeric
+// L9: Use string conversion since Scan doesn't accept float64 directly
 func Float64ToNumeric(f float64) (pgtype.Numeric, error) {
 	var n pgtype.Numeric
-	err := n.Scan(f)
+	// Convert float64 to string for scanning
+	str := fmt.Sprintf("%.2f", f)
+	err := n.Scan(str)
 	if err != nil {
 		return pgtype.Numeric{}, err
 	}
