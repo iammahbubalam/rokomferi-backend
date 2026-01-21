@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCoupons = `-- name: CountCoupons :one
+SELECT COUNT(*) FROM coupons
+`
+
+func (q *Queries) CountCoupons(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countCoupons)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCoupon = `-- name: CreateCoupon :one
 INSERT INTO coupons (code, type, value, min_spend, usage_limit, start_at, expires_at, is_active)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -91,6 +102,30 @@ func (q *Queries) GetCouponByCode(ctx context.Context, code string) (Coupon, err
 	return i, err
 }
 
+const getCouponByID = `-- name: GetCouponByID :one
+SELECT id, code, type, value, min_spend, usage_limit, used_count, start_at, expires_at, is_active, created_at, updated_at FROM coupons WHERE id = $1
+`
+
+func (q *Queries) GetCouponByID(ctx context.Context, id pgtype.UUID) (Coupon, error) {
+	row := q.db.QueryRow(ctx, getCouponByID, id)
+	var i Coupon
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Type,
+		&i.Value,
+		&i.MinSpend,
+		&i.UsageLimit,
+		&i.UsedCount,
+		&i.StartAt,
+		&i.ExpiresAt,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const incrementCouponUsage = `-- name: IncrementCouponUsage :exec
 UPDATE coupons 
 SET used_count = used_count + 1 
@@ -146,6 +181,46 @@ func (q *Queries) ListCoupons(ctx context.Context, arg ListCouponsParams) ([]Cou
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCoupon = `-- name: UpdateCoupon :exec
+UPDATE coupons SET 
+    code = $2,
+    type = $3,
+    value = $4,
+    min_spend = $5,
+    usage_limit = $6,
+    start_at = $7,
+    expires_at = $8,
+    is_active = $9
+WHERE id = $1
+`
+
+type UpdateCouponParams struct {
+	ID         pgtype.UUID      `json:"id"`
+	Code       string           `json:"code"`
+	Type       string           `json:"type"`
+	Value      pgtype.Numeric   `json:"value"`
+	MinSpend   pgtype.Numeric   `json:"min_spend"`
+	UsageLimit *int32           `json:"usage_limit"`
+	StartAt    pgtype.Timestamp `json:"start_at"`
+	ExpiresAt  pgtype.Timestamp `json:"expires_at"`
+	IsActive   *bool            `json:"is_active"`
+}
+
+func (q *Queries) UpdateCoupon(ctx context.Context, arg UpdateCouponParams) error {
+	_, err := q.db.Exec(ctx, updateCoupon,
+		arg.ID,
+		arg.Code,
+		arg.Type,
+		arg.Value,
+		arg.MinSpend,
+		arg.UsageLimit,
+		arg.StartAt,
+		arg.ExpiresAt,
+		arg.IsActive,
+	)
+	return err
 }
 
 const validateCoupon = `-- name: ValidateCoupon :one

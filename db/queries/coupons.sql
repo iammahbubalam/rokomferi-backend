@@ -42,3 +42,21 @@ WHERE id = $1 AND (usage_limit = 0 OR used_count < usage_limit);
 
 -- name: DeleteCoupon :exec
 DELETE FROM coupons WHERE id = $1;
+
+-- name: GetCouponByID :one
+SELECT * FROM coupons WHERE id = $1;
+
+-- name: UpdateCoupon :exec
+UPDATE coupons SET 
+    code = $2,
+    type = $3,
+    value = $4,
+    min_spend = $5,
+    usage_limit = $6,
+    start_at = $7,
+    expires_at = $8,
+    is_active = $9
+WHERE id = $1;
+
+-- name: CountCoupons :one
+SELECT COUNT(*) FROM coupons;

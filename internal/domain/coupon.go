@@ -33,8 +33,11 @@ type CouponValidationResult struct {
 type CouponRepository interface {
 	CreateCoupon(ctx context.Context, coupon *Coupon) error
 	GetCouponByCode(ctx context.Context, code string) (*Coupon, error)
+	GetCouponByID(ctx context.Context, id uuid.UUID) (*Coupon, error)
 	ValidateCoupon(ctx context.Context, code string, cartTotal float64) (*CouponValidationResult, error)
 	ListCoupons(ctx context.Context, limit, offset int) ([]Coupon, error)
+	CountCoupons(ctx context.Context) (int64, error)
+	UpdateCoupon(ctx context.Context, coupon *Coupon) error
 	IncrementCouponUsage(ctx context.Context, id uuid.UUID) error
 	DeleteCoupon(ctx context.Context, id uuid.UUID) error
 }

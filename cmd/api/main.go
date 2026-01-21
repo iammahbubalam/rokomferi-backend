@@ -162,6 +162,15 @@ func main() {
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))
 	mux.Handle("GET /api/v1/admin/users", adminMiddleware(authHandler.ListUsers))
 
+	// Admin Coupons
+	couponUC := usecase.NewCouponUsecase(couponRepo)
+	adminCouponHandler := v1.NewAdminCouponHandler(couponUC)
+	mux.Handle("GET /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.ListCoupons))
+	mux.Handle("GET /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.GetCoupon))
+	mux.Handle("POST /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.CreateCoupon))
+	mux.Handle("PUT /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.UpdateCoupon))
+	mux.Handle("DELETE /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.DeleteCoupon))
+
 	// Cart & Order (Protected)
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
 

@@ -18,6 +18,7 @@ type Querier interface {
 	CheckItemInWishlist(ctx context.Context, arg CheckItemInWishlistParams) (bool, error)
 	ClearCart(ctx context.Context, cartID pgtype.UUID) error
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
+	CountCoupons(ctx context.Context) (int64, error)
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
 	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
 	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
@@ -65,6 +66,7 @@ type Querier interface {
 	GetCollectionBySlug(ctx context.Context, slug string) (Collection, error)
 	GetContentBlockByKey(ctx context.Context, sectionKey string) (ContentBlock, error)
 	GetCouponByCode(ctx context.Context, code string) (Coupon, error)
+	GetCouponByID(ctx context.Context, id pgtype.UUID) (Coupon, error)
 	GetCustomerLTV(ctx context.Context) ([]GetCustomerLTVRow, error)
 	GetDailySalesStats(ctx context.Context, arg GetDailySalesStatsParams) ([]DailySalesStat, error)
 	GetInventoryLogs(ctx context.Context, arg GetInventoryLogsParams) ([]InventoryLog, error)
@@ -113,6 +115,7 @@ type Querier interface {
 	UpdateCategoryOrder(ctx context.Context, arg UpdateCategoryOrderParams) error
 	UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error)
 	UpdateContentBlockSchedule(ctx context.Context, arg UpdateContentBlockScheduleParams) error
+	UpdateCoupon(ctx context.Context, arg UpdateCouponParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error

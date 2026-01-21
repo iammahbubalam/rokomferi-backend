@@ -108,6 +108,45 @@ func (r *couponRepository) DeleteCoupon(ctx context.Context, id uuid.UUID) error
 	return r.q.DeleteCoupon(ctx, pgUUID)
 }
 
+func (r *couponRepository) GetCouponByID(ctx context.Context, id uuid.UUID) (*domain.Coupon, error) {
+	pgUUID := pgtype.UUID{Bytes: id, Valid: true}
+	c, err := r.q.GetCouponByID(ctx, pgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return toDomainCoupon(c), nil
+}
+
+func (r *couponRepository) UpdateCoupon(ctx context.Context, c *domain.Coupon) error {
+	usageLimit := int32(c.UsageLimit)
+	val, _ := Float64ToNumeric(c.Value)
+	min, _ := Float64ToNumeric(c.MinSpend)
+
+	var startAt, expiresAt pgtype.Timestamp
+	if c.StartAt != nil {
+		startAt = pgtype.Timestamp{Time: *c.StartAt, Valid: true}
+	}
+	if c.ExpiresAt != nil {
+		expiresAt = pgtype.Timestamp{Time: *c.ExpiresAt, Valid: true}
+	}
+
+	return r.q.UpdateCoupon(ctx, sqlc.UpdateCouponParams{
+		ID:         pgtype.UUID{Bytes: c.ID, Valid: true},
+		Code:       c.Code,
+		Type:       c.Type,
+		Value:      val,
+		MinSpend:   min,
+		UsageLimit: &usageLimit,
+		StartAt:    startAt,
+		ExpiresAt:  expiresAt,
+		IsActive:   &c.IsActive,
+	})
+}
+
+func (r *couponRepository) CountCoupons(ctx context.Context) (int64, error) {
+	return r.q.CountCoupons(ctx)
+}
+
 // Helpers
 func toDomainCoupon(c sqlc.Coupon) *domain.Coupon {
 	// SQLC model has *int32 for UsageLimit
