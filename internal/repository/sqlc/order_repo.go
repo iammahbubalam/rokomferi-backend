@@ -143,6 +143,50 @@ func (r *orderRepository) CreateCart(ctx context.Context, cart *domain.Cart) err
 	return nil
 }
 
+func (r *orderRepository) GetCartWithItems(ctx context.Context, userID string) ([]domain.CartItem, error) {
+	rows, err := r.queries.GetCartWithItems(ctx, stringToUUID(userID))
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]domain.CartItem, 0, len(rows))
+	for _, row := range rows {
+		// Skip rows where item_id is null (empty cart)
+		if !row.ItemID.Valid {
+			continue
+		}
+
+		item := domain.CartItem{
+			ID:        uuidToString(row.ItemID),
+			CartID:    uuidToString(row.CartID),
+			ProductID: uuidToString(row.ProductID),
+			Quantity:  int(*row.Quantity),
+			Product: domain.Product{
+				ID:        uuidToString(row.ProductID),
+				Name:      *row.Name,
+				Slug:      *row.Slug,
+				BasePrice: numericToFloat64(row.BasePrice),
+				SalePrice: numericToFloat64Ptr(row.SalePrice),
+				Stock:     int(*row.Stock),
+			},
+		}
+
+		if row.VariantID.Valid {
+			vid := uuidToString(row.VariantID)
+			item.VariantID = &vid
+		}
+
+		if len(row.Media) > 0 {
+			item.Product.Media = domain.RawJSON(row.Media)
+			mapMediaToImages(&item.Product)
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
 func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, productID string, variantID *string, quantity int) ([]domain.CartItem, error) {
 	var variantUUID pgtype.UUID
 	if variantID != nil {
