@@ -13,7 +13,9 @@ import (
 type Querier interface {
 	AddProductCategory(ctx context.Context, arg AddProductCategoryParams) error
 	AddProductToCollection(ctx context.Context, arg AddProductToCollectionParams) error
+	AddWishlistItem(ctx context.Context, arg AddWishlistItemParams) error
 	AtomicRemoveCartItem(ctx context.Context, arg AtomicRemoveCartItemParams) error
+	CheckItemInWishlist(ctx context.Context, arg CheckItemInWishlistParams) (bool, error)
 	ClearCart(ctx context.Context, cartID pgtype.UUID) error
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
@@ -32,6 +34,7 @@ type Querier interface {
 	CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVariant(ctx context.Context, arg CreateVariantParams) (Variant, error)
+	CreateWishlist(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
 	DeleteCategory(ctx context.Context, id pgtype.UUID) error
 	DeleteCollection(ctx context.Context, id pgtype.UUID) error
 	DeleteProduct(ctx context.Context, id pgtype.UUID) error
@@ -79,10 +82,13 @@ type Querier interface {
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
 	GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error)
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
+	GetWishlistByUserID(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
+	GetWishlistItems(ctx context.Context, wishlistID pgtype.UUID) ([]GetWishlistItemsRow, error)
 	HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
+	RemoveWishlistItem(ctx context.Context, arg RemoveWishlistItemParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error
 	SaveRefreshToken(ctx context.Context, arg SaveRefreshTokenParams) (RefreshToken, error)
 	UpdateAddress(ctx context.Context, arg UpdateAddressParams) (Address, error)

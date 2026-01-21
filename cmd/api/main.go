@@ -162,6 +162,15 @@ func main() {
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 
+	// Wishlist Module
+	wishlistRepo := sqlcrepo.NewWishlistRepository(pgxPool)
+	wishlistUC := usecase.NewWishlistUsecase(wishlistRepo)
+	wishlistHandler := v1.NewWishlistHandler(wishlistUC)
+
+	mux.Handle("GET /api/v1/wishlist", middleware.AuthMiddleware(http.HandlerFunc(wishlistHandler.GetMyWishlist)))
+	mux.Handle("POST /api/v1/wishlist", middleware.AuthMiddleware(http.HandlerFunc(wishlistHandler.AddToWishlist)))
+	mux.Handle("DELETE /api/v1/wishlist/{productId}", middleware.AuthMiddleware(http.HandlerFunc(wishlistHandler.RemoveFromWishlist)))
+
 	// Health Check
 	healthHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

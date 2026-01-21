@@ -176,3 +176,17 @@ type Variant struct {
 	Stock     int32       `json:"stock"`
 	Sku       *string     `json:"sku"`
 }
+
+type Wishlist struct {
+	ID        pgtype.UUID      `json:"id"`
+	UserID    pgtype.UUID      `json:"user_id"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+	UpdatedAt pgtype.Timestamp `json:"updated_at"`
+}
+
+type WishlistItem struct {
+	ID         pgtype.UUID      `json:"id"`
+	WishlistID pgtype.UUID      `json:"wishlist_id"`
+	ProductID  pgtype.UUID      `json:"product_id"`
+	CreatedAt  pgtype.Timestamp `json:"created_at"`
+}
