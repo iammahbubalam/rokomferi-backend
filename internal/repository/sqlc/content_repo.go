@@ -26,7 +26,7 @@ func NewContentRepository(db sqlc.DBTX) ContentRepository {
 }
 
 func (r *contentRepository) GetContentByKey(ctx context.Context, key string) (*domain.ContentBlock, error) {
-	content, err := r.q.GetContentByKey(ctx, key)
+	content, err := r.q.GetContentBlockByKey(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (r *contentRepository) UpsertContent(ctx context.Context, key string, data 
 		return nil, err
 	}
 
-	content, err := r.q.UpsertContent(ctx, sqlc.UpsertContentParams{
+	content, err := r.q.UpsertContentBlock(ctx, sqlc.UpsertContentBlockParams{
 		SectionKey: key,
 		Content:    bytes,
 	})

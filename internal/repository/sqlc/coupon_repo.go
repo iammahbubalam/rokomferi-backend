@@ -1,0 +1,162 @@
+package sqlcrepo
+
+import (
+	"context"
+	"rokomferi-backend/internal/domain"
+
+	// Import the GENERATED SQLC package alias
+	"rokomferi-backend/db/sqlc"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type couponRepository struct {
+	q *sqlc.Queries
+}
+
+func NewCouponRepository(db sqlc.DBTX) domain.CouponRepository {
+	return &couponRepository{
+		q: sqlc.New(db),
+	}
+}
+
+func (r *couponRepository) CreateCoupon(ctx context.Context, c *domain.Coupon) error {
+	// Domain uses int, SQLC expects *int32
+	usageLimit := int32(c.UsageLimit)
+	// Domain uses bool, SQLC expects *bool
+	isActive := c.IsActive
+
+	params := sqlc.CreateCouponParams{
+		Code:       c.Code,
+		Type:       c.Type,
+		UsageLimit: &usageLimit,
+		IsActive:   &isActive,
+	}
+
+	// Convert checks
+	val, _ := Float64ToNumeric(c.Value)
+	params.Value = val
+	min, _ := Float64ToNumeric(c.MinSpend)
+	params.MinSpend = min
+
+	if c.StartAt != nil {
+		params.StartAt = pgtype.Timestamp{Time: *c.StartAt, Valid: true}
+	}
+	if c.ExpiresAt != nil {
+		params.ExpiresAt = pgtype.Timestamp{Time: *c.ExpiresAt, Valid: true}
+	}
+
+	_, err := r.q.CreateCoupon(ctx, params)
+	return err
+}
+
+func (r *couponRepository) GetCouponByCode(ctx context.Context, code string) (*domain.Coupon, error) {
+	c, err := r.q.GetCouponByCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	return toDomainCoupon(c), nil
+}
+
+func (r *couponRepository) ValidateCoupon(ctx context.Context, code string, cartTotal float64) (*domain.CouponValidationResult, error) {
+	total, _ := Float64ToNumeric(cartTotal)
+
+	res, err := r.q.ValidateCoupon(ctx, sqlc.ValidateCouponParams{
+		Code:      code,
+		CartTotal: total,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.CouponValidationResult{
+		ID:               uuid.UUID(res.ID.Bytes),
+		Code:             res.Code,
+		Type:             res.Type,
+		Value:            NumericToFloat64(res.Value),
+		MinSpend:         NumericToFloat64(res.MinSpend),
+		ValidationStatus: res.ValidationStatus,
+	}, nil
+}
+
+func (r *couponRepository) ListCoupons(ctx context.Context, limit, offset int) ([]domain.Coupon, error) {
+	coupons, err := r.q.ListCoupons(ctx, sqlc.ListCouponsParams{
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result []domain.Coupon
+	for _, c := range coupons {
+		result = append(result, *toDomainCoupon(c))
+	}
+	return result, nil
+}
+
+func (r *couponRepository) IncrementCouponUsage(ctx context.Context, id uuid.UUID) error {
+	// Convert uuid.UUID -> pgtype.UUID
+	pgUUID := pgtype.UUID{Bytes: id, Valid: true}
+	return r.q.IncrementCouponUsage(ctx, pgUUID)
+}
+
+func (r *couponRepository) DeleteCoupon(ctx context.Context, id uuid.UUID) error {
+	pgUUID := pgtype.UUID{Bytes: id, Valid: true}
+	return r.q.DeleteCoupon(ctx, pgUUID)
+}
+
+// Helpers
+func toDomainCoupon(c sqlc.Coupon) *domain.Coupon {
+	// SQLC model has *int32 for UsageLimit
+	var limit, used int
+	if c.UsageLimit != nil {
+		limit = int(*c.UsageLimit)
+	}
+	if c.UsedCount != nil {
+		used = int(*c.UsedCount)
+	}
+	var active bool
+	if c.IsActive != nil {
+		active = *c.IsActive
+	}
+
+	return &domain.Coupon{
+		ID:         uuid.UUID(c.ID.Bytes),
+		Code:       c.Code,
+		Type:       c.Type,
+		Value:      NumericToFloat64(c.Value),
+		MinSpend:   NumericToFloat64(c.MinSpend),
+		UsageLimit: limit,
+		UsedCount:  used,
+		StartAt:    toTimePtr(c.StartAt),
+		ExpiresAt:  toTimePtr(c.ExpiresAt),
+		IsActive:   active,
+		CreatedAt:  c.CreatedAt.Time,
+	}
+}
+
+func toTimePtr(t pgtype.Timestamp) *time.Time {
+	if t.Valid {
+		return &t.Time
+	}
+	return nil
+}
+
+// NumericToFloat64 converts pgtype.Numeric to float64
+func NumericToFloat64(n pgtype.Numeric) float64 {
+	f, _ := n.Float64Value()
+	return f.Float64
+}
+
+// Float64ToNumeric converts float64 to pgtype.Numeric
+func Float64ToNumeric(f float64) (pgtype.Numeric, error) {
+	var n pgtype.Numeric
+	err := n.Scan(f)
+	if err != nil {
+		return pgtype.Numeric{}, err
+	}
+	return n, nil
+}

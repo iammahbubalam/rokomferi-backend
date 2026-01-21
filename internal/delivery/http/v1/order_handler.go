@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
+	"rokomferi-backend/pkg/utils"
 )
 
 type OrderHandler struct {
@@ -165,6 +166,38 @@ func (h *OrderHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)
+}
+
+type ApplyCouponReq struct {
+	CouponCode string `json:"couponCode"`
+}
+
+func (h *OrderHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userId := user.ID
+
+	var req ApplyCouponReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.CouponCode == "" {
+		utils.WriteError(w, http.StatusBadRequest, "Coupon code is required")
+		return
+	}
+
+	resp, err := h.orderUC.ApplyCoupon(r.Context(), userId, req.CouponCode)
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, resp)
 }
 
 func contains(s, substr string) bool {

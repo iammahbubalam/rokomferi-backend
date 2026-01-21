@@ -22,12 +22,12 @@ type Querier interface {
 	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
 	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
 	CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error)
-	CountProductsWithSearch(ctx context.Context, arg CountProductsWithSearchParams) (int64, error)
 	CountSearchProducts(ctx context.Context, arg CountSearchProductsParams) (int64, error)
 	CreateAddress(ctx context.Context, arg CreateAddressParams) (Address, error)
 	CreateCart(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
 	CreateCollection(ctx context.Context, arg CreateCollectionParams) (Collection, error)
+	CreateCoupon(ctx context.Context, arg CreateCouponParams) (Coupon, error)
 	CreateInventoryLog(ctx context.Context, arg CreateInventoryLogParams) (InventoryLog, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
@@ -39,12 +39,14 @@ type Querier interface {
 	DeleteAddress(ctx context.Context, arg DeleteAddressParams) error
 	DeleteCategory(ctx context.Context, id pgtype.UUID) error
 	DeleteCollection(ctx context.Context, id pgtype.UUID) error
+	DeleteCoupon(ctx context.Context, id pgtype.UUID) error
 	DeleteProduct(ctx context.Context, id pgtype.UUID) error
 	DeleteReview(ctx context.Context, id pgtype.UUID) error
 	DeleteVariant(ctx context.Context, id pgtype.UUID) error
 	DeleteVariantsByProductID(ctx context.Context, productID pgtype.UUID) error
 	GetActiveChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
 	GetActiveCollections(ctx context.Context) ([]Collection, error)
+	GetActiveContentBlock(ctx context.Context, sectionKey string) (ContentBlock, error)
 	GetActiveNavCategories(ctx context.Context) ([]Category, error)
 	GetAddressesByUserID(ctx context.Context, userID pgtype.UUID) ([]Address, error)
 	GetAllCategories(ctx context.Context) ([]Category, error)
@@ -61,8 +63,12 @@ type Querier interface {
 	GetChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
 	GetCollectionByID(ctx context.Context, id pgtype.UUID) (Collection, error)
 	GetCollectionBySlug(ctx context.Context, slug string) (Collection, error)
-	GetContentByKey(ctx context.Context, sectionKey string) (ContentBlock, error)
+	GetContentBlockByKey(ctx context.Context, sectionKey string) (ContentBlock, error)
+	GetCouponByCode(ctx context.Context, code string) (Coupon, error)
+	GetCustomerLTV(ctx context.Context) ([]GetCustomerLTVRow, error)
+	GetDailySalesStats(ctx context.Context, arg GetDailySalesStatsParams) ([]DailySalesStat, error)
 	GetInventoryLogs(ctx context.Context, arg GetInventoryLogsParams) ([]InventoryLog, error)
+	GetLowStockProducts(ctx context.Context) ([]GetLowStockProductsRow, error)
 	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
 	GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error)
 	GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error)
@@ -74,11 +80,12 @@ type Querier interface {
 	GetProductsForCollection(ctx context.Context, collectionID pgtype.UUID) ([]Product, error)
 	GetProductsWithCategoryFilter(ctx context.Context, arg GetProductsWithCategoryFilterParams) ([]Product, error)
 	GetProductsWithPriceRange(ctx context.Context, arg GetProductsWithPriceRangeParams) ([]Product, error)
-	GetProductsWithSearch(ctx context.Context, arg GetProductsWithSearchParams) ([]Product, error)
 	GetRefreshToken(ctx context.Context, token string) (RefreshToken, error)
 	GetReviewByID(ctx context.Context, id pgtype.UUID) (Review, error)
 	GetReviewsByProductID(ctx context.Context, productID pgtype.UUID) ([]GetReviewsByProductIDRow, error)
 	GetRootCategories(ctx context.Context) ([]Category, error)
+	GetTopSellingProducts(ctx context.Context, createdAt pgtype.Timestamp) ([]GetTopSellingProductsRow, error)
+	GetTotalRevenue(ctx context.Context) (pgtype.Numeric, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
@@ -87,6 +94,13 @@ type Querier interface {
 	GetWishlistByUserID(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
 	GetWishlistItems(ctx context.Context, wishlistID pgtype.UUID) ([]GetWishlistItemsRow, error)
 	HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error)
+	// L9 Optimization: Atomic increment with optimistic concurrency check if needed.
+	// We rely on db-level atomicity here.
+	IncrementCouponUsage(ctx context.Context, id pgtype.UUID) error
+	ListCategorySlugs(ctx context.Context) ([]ListCategorySlugsRow, error)
+	ListCollectionSlugs(ctx context.Context) ([]ListCollectionSlugsRow, error)
+	ListCoupons(ctx context.Context, arg ListCouponsParams) ([]Coupon, error)
+	ListProductSlugs(ctx context.Context) ([]ListProductSlugsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
@@ -98,6 +112,7 @@ type Querier interface {
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	UpdateCategoryOrder(ctx context.Context, arg UpdateCategoryOrderParams) error
 	UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error)
+	UpdateContentBlockSchedule(ctx context.Context, arg UpdateContentBlockScheduleParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error
@@ -106,7 +121,12 @@ type Querier interface {
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
 	UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error)
-	UpsertContent(ctx context.Context, arg UpsertContentParams) (ContentBlock, error)
+	UpsertContentBlock(ctx context.Context, arg UpsertContentBlockParams) (ContentBlock, error)
+	UpsertDailySalesStat(ctx context.Context, arg UpsertDailySalesStatParams) error
+	// L9 Optimization: Single-pass validation logic pushed to DB.
+	// Returns the coupon if valid, or a status reason if not.
+	// Uses covering indexes on (code) and partial indexes on (is_active) where applicable.
+	ValidateCoupon(ctx context.Context, arg ValidateCouponParams) (ValidateCouponRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

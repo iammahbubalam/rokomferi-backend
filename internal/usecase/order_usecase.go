@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"log/slog"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
 )
@@ -12,13 +11,15 @@ import (
 type OrderUsecase struct {
 	orderRepo   domain.OrderRepository
 	productRepo domain.ProductRepository
+	couponRepo  domain.CouponRepository // L9: Added CouponRepo
 	txManager   domain.TransactionManager
 }
 
-func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, txManager domain.TransactionManager) *OrderUsecase {
+func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, cRepo domain.CouponRepository, txManager domain.TransactionManager) *OrderUsecase {
 	return &OrderUsecase{
 		orderRepo:   repo,
 		productRepo: pRepo,
+		couponRepo:  cRepo,
 		txManager:   txManager,
 	}
 }
@@ -178,14 +179,74 @@ func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string
 // --- Order Logic ---
 
 type CheckoutReq struct {
-	Address domain.JSONB      `json:"address"`
-	Payment string            `json:"paymentMethod"`
-	Items   []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
+	Address    domain.JSONB      `json:"address"`
+	Payment    string            `json:"paymentMethod"`
+	Items      []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
+	CouponCode string            `json:"couponCode,omitempty"`
 }
 
 type CheckoutItemReq struct {
 	ProductID string `json:"productId"`
 	Quantity  int    `json:"quantity"`
+}
+
+// ApplyCouponResp represents the result of applying a coupon
+type ApplyCouponResp struct {
+	Valid          bool    `json:"valid"`
+	Code           string  `json:"code"`
+	DiscountAmount float64 `json:"discountAmount"`
+	NewTotal       float64 `json:"newTotal"`
+	Message        string  `json:"message"`
+}
+
+func (u *OrderUsecase) ApplyCoupon(ctx context.Context, userID, code string) (*ApplyCouponResp, error) {
+	// 1. Get Cart
+	cart, err := u.GetMyCart(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cart")
+	}
+
+	// 2. Calculate Subtotal
+	var subtotal float64
+	for _, item := range cart.Items {
+		price := item.Product.BasePrice
+		if item.Product.SalePrice != nil {
+			price = *item.Product.SalePrice
+		}
+		subtotal += price * float64(item.Quantity)
+	}
+
+	// 3. Validate Coupon
+	res, err := u.couponRepo.ValidateCoupon(ctx, code, subtotal)
+	if err != nil {
+		// If validation query returns no rows or error
+		return &ApplyCouponResp{Valid: false, Message: "Invalid coupon code"}, nil
+	}
+
+	if res.ValidationStatus != "valid" {
+		return &ApplyCouponResp{Valid: false, Message: fmt.Sprintf("Coupon is %s", res.ValidationStatus), Code: code}, nil
+	}
+
+	// 4. Calculate Discount
+	discount := 0.0
+	if res.Type == "percentage" {
+		discount = subtotal * (res.Value / 100)
+	} else {
+		discount = res.Value
+	}
+
+	// Cap discount at subtotal (no negative total)
+	if discount > subtotal {
+		discount = subtotal
+	}
+
+	return &ApplyCouponResp{
+		Valid:          true,
+		Code:           code,
+		DiscountAmount: discount,
+		NewTotal:       subtotal - discount,
+		Message:        "Coupon applied successfully",
+	}, nil
 }
 
 func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req CheckoutReq) (*domain.Order, error) {
@@ -195,7 +256,6 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 	var cartID string
 
 	if len(req.Items) > 0 {
-		// Direct Checkout Mode
 		isDirect = true
 		for _, item := range req.Items {
 			processItems = append(processItems, domain.CartItem{
@@ -204,7 +264,6 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			})
 		}
 	} else {
-		// Normal Cart Checkout Mode
 		cart, err := u.GetMyCart(ctx, userID)
 		if err != nil || len(cart.Items) == 0 {
 			return nil, fmt.Errorf("cart is empty")
@@ -213,25 +272,23 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		cartID = cart.ID
 	}
 
-	// Calculate Total with FRESH prices and check Stock
+	// 2. Calculate Total & Prepare Order Items
 	var total float64
 	var orderItems []domain.OrderItem
 
 	for _, item := range processItems {
-		// Re-fetch product to ensure price/stock is up-to-date.
 		product, err := u.productRepo.GetProductByID(ctx, item.ProductID)
 		if err != nil {
-			return nil, fmt.Errorf("product %s not found: %v", item.ProductID, err)
+			return nil, fmt.Errorf("product %s not found", item.ProductID)
 		}
 
-		if product.Stock < item.Quantity { // Explicit Quantity Check
-			return nil, fmt.Errorf("product %s has insufficient stock (requested: %d, available: %d)", product.Name, item.Quantity, product.Stock)
+		if product.Stock < item.Quantity {
+			return nil, fmt.Errorf("insufficient stock for %s", product.Name)
 		}
 		if product.StockStatus == "out_of_stock" {
 			return nil, fmt.Errorf("product %s is out of stock", product.Name)
 		}
 
-		// Determine price (Sale vs Base)
 		price := product.BasePrice
 		if product.SalePrice != nil {
 			price = *product.SalePrice
@@ -246,6 +303,29 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		})
 	}
 
+	// 3. Apply Coupon (if provided)
+	if req.CouponCode != "" {
+		// Re-validate strictly inside checkout
+		res, err := u.couponRepo.ValidateCoupon(ctx, req.CouponCode, total)
+		if err != nil || res.ValidationStatus != "valid" {
+			return nil, fmt.Errorf("invalid or expired coupon: %s", req.CouponCode)
+		}
+
+		discount := 0.0
+		if res.Type == "percentage" {
+			discount = total * (res.Value / 100)
+		} else {
+			discount = res.Value
+		}
+		if discount > total {
+			discount = total
+		}
+		total -= discount
+
+		// Note: We might want to store the discount/coupon in the order payload for records.
+		// Since we didn't add columns to Orders table yet, we assume TotalAmount reflects the discounted price.
+	}
+
 	order := &domain.Order{
 		ID:              utils.GenerateUUID(),
 		UserID:          userID,
@@ -257,33 +337,40 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		Items:           orderItems,
 	}
 
-	// Wrap Order Creation, Cart Clearing, and Stock Update in Transaction
+	// 4. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
 	err := u.txManager.Do(ctx, func(txCtx context.Context) error {
-		// 1. Create Order
 		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
-			return fmt.Errorf("failed to create order: %v", err)
+			return err
 		}
 
-		// 2. Decrement Stock for each item
+		// Update Stock
 		for _, item := range order.Items {
-			// Decrease stock: pass negative quantity
 			if err := u.productRepo.UpdateStock(txCtx, item.ProductID, -item.Quantity, "order_placed", order.ID); err != nil {
-				return fmt.Errorf("failed to update stock for %s: %v", item.ProductID, err)
+				return err
 			}
 		}
 
-		// 3. Clear Cart (ONLY if not direct checkout)
+		// Increment Coupon Logic
+		if req.CouponCode != "" {
+			// We need the ID. ValidateCoupon gives us the result.
+			// Ideally we fetch it or use the result from earlier if we refactored.
+			// For safety/speed reuse the fetch:
+			coupon, err := u.couponRepo.GetCouponByCode(txCtx, req.CouponCode)
+			if err == nil {
+				u.couponRepo.IncrementCouponUsage(txCtx, coupon.ID)
+			}
+		}
+
+		// Clear Cart
 		if !isDirect && cartID != "" {
 			if err := u.orderRepo.ClearCart(txCtx, cartID); err != nil {
-				return fmt.Errorf("failed to clear cart: %v", err)
+				return err
 			}
 		}
-
 		return nil
 	})
 
 	if err != nil {
-		slog.Error("Checkout transaction failed", "error", err)
 		return nil, err
 	}
 

@@ -28,18 +28,22 @@ func (q *Queries) AddProductToCollection(ctx context.Context, arg AddProductToCo
 }
 
 const createCollection = `-- name: CreateCollection :one
-INSERT INTO collections (title, slug, description, image, story, is_active)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, title, slug, description, image, story, is_active, created_at, updated_at
+INSERT INTO collections (title, slug, description, image, story, is_active, meta_title, meta_description, meta_keywords, og_image)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image
 `
 
 type CreateCollectionParams struct {
-	Title       string  `json:"title"`
-	Slug        string  `json:"slug"`
-	Description *string `json:"description"`
-	Image       *string `json:"image"`
-	Story       *string `json:"story"`
-	IsActive    bool    `json:"is_active"`
+	Title           string  `json:"title"`
+	Slug            string  `json:"slug"`
+	Description     *string `json:"description"`
+	Image           *string `json:"image"`
+	Story           *string `json:"story"`
+	IsActive        bool    `json:"is_active"`
+	MetaTitle       *string `json:"meta_title"`
+	MetaDescription *string `json:"meta_description"`
+	MetaKeywords    *string `json:"meta_keywords"`
+	OgImage         *string `json:"og_image"`
 }
 
 func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionParams) (Collection, error) {
@@ -50,6 +54,10 @@ func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionPara
 		arg.Image,
 		arg.Story,
 		arg.IsActive,
+		arg.MetaTitle,
+		arg.MetaDescription,
+		arg.MetaKeywords,
+		arg.OgImage,
 	)
 	var i Collection
 	err := row.Scan(
@@ -62,6 +70,10 @@ func (q *Queries) CreateCollection(ctx context.Context, arg CreateCollectionPara
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MetaTitle,
+		&i.MetaDescription,
+		&i.MetaKeywords,
+		&i.OgImage,
 	)
 	return i, err
 }
@@ -76,7 +88,7 @@ func (q *Queries) DeleteCollection(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getActiveCollections = `-- name: GetActiveCollections :many
-SELECT id, title, slug, description, image, story, is_active, created_at, updated_at FROM collections WHERE is_active = true ORDER BY created_at DESC
+SELECT id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image FROM collections WHERE is_active = true ORDER BY created_at DESC
 `
 
 func (q *Queries) GetActiveCollections(ctx context.Context) ([]Collection, error) {
@@ -98,6 +110,10 @@ func (q *Queries) GetActiveCollections(ctx context.Context) ([]Collection, error
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MetaTitle,
+			&i.MetaDescription,
+			&i.MetaKeywords,
+			&i.OgImage,
 		); err != nil {
 			return nil, err
 		}
@@ -110,7 +126,7 @@ func (q *Queries) GetActiveCollections(ctx context.Context) ([]Collection, error
 }
 
 const getAllCollections = `-- name: GetAllCollections :many
-SELECT id, title, slug, description, image, story, is_active, created_at, updated_at FROM collections ORDER BY created_at DESC
+SELECT id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image FROM collections ORDER BY created_at DESC
 `
 
 func (q *Queries) GetAllCollections(ctx context.Context) ([]Collection, error) {
@@ -132,6 +148,10 @@ func (q *Queries) GetAllCollections(ctx context.Context) ([]Collection, error) {
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MetaTitle,
+			&i.MetaDescription,
+			&i.MetaKeywords,
+			&i.OgImage,
 		); err != nil {
 			return nil, err
 		}
@@ -144,7 +164,7 @@ func (q *Queries) GetAllCollections(ctx context.Context) ([]Collection, error) {
 }
 
 const getCollectionByID = `-- name: GetCollectionByID :one
-SELECT id, title, slug, description, image, story, is_active, created_at, updated_at FROM collections WHERE id = $1
+SELECT id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image FROM collections WHERE id = $1
 `
 
 func (q *Queries) GetCollectionByID(ctx context.Context, id pgtype.UUID) (Collection, error) {
@@ -160,12 +180,16 @@ func (q *Queries) GetCollectionByID(ctx context.Context, id pgtype.UUID) (Collec
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MetaTitle,
+		&i.MetaDescription,
+		&i.MetaKeywords,
+		&i.OgImage,
 	)
 	return i, err
 }
 
 const getCollectionBySlug = `-- name: GetCollectionBySlug :one
-SELECT id, title, slug, description, image, story, is_active, created_at, updated_at FROM collections WHERE slug = $1
+SELECT id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image FROM collections WHERE slug = $1
 `
 
 func (q *Queries) GetCollectionBySlug(ctx context.Context, slug string) (Collection, error) {
@@ -181,6 +205,10 @@ func (q *Queries) GetCollectionBySlug(ctx context.Context, slug string) (Collect
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MetaTitle,
+		&i.MetaDescription,
+		&i.MetaKeywords,
+		&i.OgImage,
 	)
 	return i, err
 }
@@ -225,19 +253,24 @@ func (q *Queries) RemoveProductFromCollection(ctx context.Context, arg RemovePro
 
 const updateCollection = `-- name: UpdateCollection :one
 UPDATE collections
-SET title = $2, slug = $3, description = $4, image = $5, story = $6, is_active = $7
+SET title = $2, slug = $3, description = $4, image = $5, story = $6, is_active = $7,
+    meta_title = $8, meta_description = $9, meta_keywords = $10, og_image = $11
 WHERE id = $1
-RETURNING id, title, slug, description, image, story, is_active, created_at, updated_at
+RETURNING id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image
 `
 
 type UpdateCollectionParams struct {
-	ID          pgtype.UUID `json:"id"`
-	Title       string      `json:"title"`
-	Slug        string      `json:"slug"`
-	Description *string     `json:"description"`
-	Image       *string     `json:"image"`
-	Story       *string     `json:"story"`
-	IsActive    bool        `json:"is_active"`
+	ID              pgtype.UUID `json:"id"`
+	Title           string      `json:"title"`
+	Slug            string      `json:"slug"`
+	Description     *string     `json:"description"`
+	Image           *string     `json:"image"`
+	Story           *string     `json:"story"`
+	IsActive        bool        `json:"is_active"`
+	MetaTitle       *string     `json:"meta_title"`
+	MetaDescription *string     `json:"meta_description"`
+	MetaKeywords    *string     `json:"meta_keywords"`
+	OgImage         *string     `json:"og_image"`
 }
 
 func (q *Queries) UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error) {
@@ -249,6 +282,10 @@ func (q *Queries) UpdateCollection(ctx context.Context, arg UpdateCollectionPara
 		arg.Image,
 		arg.Story,
 		arg.IsActive,
+		arg.MetaTitle,
+		arg.MetaDescription,
+		arg.MetaKeywords,
+		arg.OgImage,
 	)
 	var i Collection
 	err := row.Scan(
@@ -261,6 +298,10 @@ func (q *Queries) UpdateCollection(ctx context.Context, arg UpdateCollectionPara
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MetaTitle,
+		&i.MetaDescription,
+		&i.MetaKeywords,
+		&i.OgImage,
 	)
 	return i, err
 }

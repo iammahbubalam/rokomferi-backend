@@ -43,31 +43,38 @@ type CartItem struct {
 }
 
 type Category struct {
-	ID              pgtype.UUID `json:"id"`
-	Name            string      `json:"name"`
-	Slug            string      `json:"slug"`
-	ParentID        pgtype.UUID `json:"parent_id"`
-	OrderIndex      int32       `json:"order_index"`
-	Icon            *string     `json:"icon"`
-	Image           *string     `json:"image"`
-	IsActive        bool        `json:"is_active"`
-	ShowInNav       bool        `json:"show_in_nav"`
-	MetaTitle       *string     `json:"meta_title"`
-	MetaDescription *string     `json:"meta_description"`
-	Keywords        *string     `json:"keywords"`
-	IsFeatured      bool        `json:"is_featured"`
+	ID              pgtype.UUID      `json:"id"`
+	Name            string           `json:"name"`
+	Slug            string           `json:"slug"`
+	ParentID        pgtype.UUID      `json:"parent_id"`
+	OrderIndex      int32            `json:"order_index"`
+	Icon            *string          `json:"icon"`
+	Image           *string          `json:"image"`
+	IsActive        bool             `json:"is_active"`
+	ShowInNav       bool             `json:"show_in_nav"`
+	MetaTitle       *string          `json:"meta_title"`
+	MetaDescription *string          `json:"meta_description"`
+	Keywords        *string          `json:"keywords"`
+	IsFeatured      bool             `json:"is_featured"`
+	OgImage         *string          `json:"og_image"`
+	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
 }
 
 type Collection struct {
-	ID          pgtype.UUID      `json:"id"`
-	Title       string           `json:"title"`
-	Slug        string           `json:"slug"`
-	Description *string          `json:"description"`
-	Image       *string          `json:"image"`
-	Story       *string          `json:"story"`
-	IsActive    bool             `json:"is_active"`
-	CreatedAt   pgtype.Timestamp `json:"created_at"`
-	UpdatedAt   pgtype.Timestamp `json:"updated_at"`
+	ID              pgtype.UUID      `json:"id"`
+	Title           string           `json:"title"`
+	Slug            string           `json:"slug"`
+	Description     *string          `json:"description"`
+	Image           *string          `json:"image"`
+	Story           *string          `json:"story"`
+	IsActive        bool             `json:"is_active"`
+	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
+	MetaTitle       *string          `json:"meta_title"`
+	MetaDescription *string          `json:"meta_description"`
+	MetaKeywords    *string          `json:"meta_keywords"`
+	OgImage         *string          `json:"og_image"`
 }
 
 type ContentBlock struct {
@@ -76,6 +83,33 @@ type ContentBlock struct {
 	Content    []byte             `json:"content"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	StartAt    pgtype.Timestamp   `json:"start_at"`
+	EndAt      pgtype.Timestamp   `json:"end_at"`
+	IsActive   *bool              `json:"is_active"`
+}
+
+type Coupon struct {
+	ID         pgtype.UUID      `json:"id"`
+	Code       string           `json:"code"`
+	Type       string           `json:"type"`
+	Value      pgtype.Numeric   `json:"value"`
+	MinSpend   pgtype.Numeric   `json:"min_spend"`
+	UsageLimit *int32           `json:"usage_limit"`
+	UsedCount  *int32           `json:"used_count"`
+	StartAt    pgtype.Timestamp `json:"start_at"`
+	ExpiresAt  pgtype.Timestamp `json:"expires_at"`
+	IsActive   *bool            `json:"is_active"`
+	CreatedAt  pgtype.Timestamp `json:"created_at"`
+	UpdatedAt  pgtype.Timestamp `json:"updated_at"`
+}
+
+type DailySalesStat struct {
+	Date           pgtype.Date      `json:"date"`
+	TotalRevenue   pgtype.Numeric   `json:"total_revenue"`
+	TotalOrders    int32            `json:"total_orders"`
+	TotalItemsSold int32            `json:"total_items_sold"`
+	AvgOrderValue  pgtype.Numeric   `json:"avg_order_value"`
+	UpdatedAt      pgtype.Timestamp `json:"updated_at"`
 }
 
 type InventoryLog struct {
@@ -128,6 +162,10 @@ type Product struct {
 	CreatedAt         pgtype.Timestamp `json:"created_at"`
 	UpdatedAt         pgtype.Timestamp `json:"updated_at"`
 	SearchVector      interface{}      `json:"search_vector"`
+	MetaTitle         *string          `json:"meta_title"`
+	MetaDescription   *string          `json:"meta_description"`
+	MetaKeywords      *string          `json:"meta_keywords"`
+	OgImage           *string          `json:"og_image"`
 }
 
 type ProductCategory struct {

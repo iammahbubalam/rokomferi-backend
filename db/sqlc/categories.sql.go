@@ -12,9 +12,9 @@ import (
 )
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured
+INSERT INTO categories (name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at
 `
 
 type CreateCategoryParams struct {
@@ -30,6 +30,7 @@ type CreateCategoryParams struct {
 	MetaDescription *string     `json:"meta_description"`
 	Keywords        *string     `json:"keywords"`
 	IsFeatured      bool        `json:"is_featured"`
+	OgImage         *string     `json:"og_image"`
 }
 
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
@@ -46,6 +47,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		arg.MetaDescription,
 		arg.Keywords,
 		arg.IsFeatured,
+		arg.OgImage,
 	)
 	var i Category
 	err := row.Scan(
@@ -62,6 +64,9 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.MetaDescription,
 		&i.Keywords,
 		&i.IsFeatured,
+		&i.OgImage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -76,7 +81,7 @@ func (q *Queries) DeleteCategory(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getActiveChildCategories = `-- name: GetActiveChildCategories :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories 
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories 
 WHERE parent_id = $1 AND is_active = true AND show_in_nav = true 
 ORDER BY order_index ASC
 `
@@ -104,6 +109,9 @@ func (q *Queries) GetActiveChildCategories(ctx context.Context, parentID pgtype.
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -116,7 +124,7 @@ func (q *Queries) GetActiveChildCategories(ctx context.Context, parentID pgtype.
 }
 
 const getActiveNavCategories = `-- name: GetActiveNavCategories :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories 
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories 
 WHERE parent_id IS NULL AND is_active = true AND show_in_nav = true 
 ORDER BY order_index ASC
 `
@@ -144,6 +152,9 @@ func (q *Queries) GetActiveNavCategories(ctx context.Context) ([]Category, error
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -156,7 +167,7 @@ func (q *Queries) GetActiveNavCategories(ctx context.Context) ([]Category, error
 }
 
 const getAllCategories = `-- name: GetAllCategories :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories ORDER BY order_index ASC
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories ORDER BY order_index ASC
 `
 
 func (q *Queries) GetAllCategories(ctx context.Context) ([]Category, error) {
@@ -182,6 +193,9 @@ func (q *Queries) GetAllCategories(ctx context.Context) ([]Category, error) {
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -194,7 +208,7 @@ func (q *Queries) GetAllCategories(ctx context.Context) ([]Category, error) {
 }
 
 const getCategoriesByIDs = `-- name: GetCategoriesByIDs :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories WHERE id = ANY($1::uuid[])
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE id = ANY($1::uuid[])
 `
 
 func (q *Queries) GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Category, error) {
@@ -220,6 +234,9 @@ func (q *Queries) GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -232,7 +249,7 @@ func (q *Queries) GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID
 }
 
 const getCategoryByID = `-- name: GetCategoryByID :one
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories WHERE id = $1
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE id = $1
 `
 
 func (q *Queries) GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category, error) {
@@ -252,12 +269,15 @@ func (q *Queries) GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category
 		&i.MetaDescription,
 		&i.Keywords,
 		&i.IsFeatured,
+		&i.OgImage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getCategoryBySlug = `-- name: GetCategoryBySlug :one
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories WHERE slug = $1
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE slug = $1
 `
 
 func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category, error) {
@@ -277,12 +297,15 @@ func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category,
 		&i.MetaDescription,
 		&i.Keywords,
 		&i.IsFeatured,
+		&i.OgImage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getChildCategories = `-- name: GetChildCategories :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories WHERE parent_id = $1 ORDER BY order_index ASC
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE parent_id = $1 ORDER BY order_index ASC
 `
 
 func (q *Queries) GetChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error) {
@@ -308,6 +331,9 @@ func (q *Queries) GetChildCategories(ctx context.Context, parentID pgtype.UUID) 
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -320,7 +346,7 @@ func (q *Queries) GetChildCategories(ctx context.Context, parentID pgtype.UUID) 
 }
 
 const getRootCategories = `-- name: GetRootCategories :many
-SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured FROM categories WHERE parent_id IS NULL ORDER BY order_index ASC
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE parent_id IS NULL ORDER BY order_index ASC
 `
 
 func (q *Queries) GetRootCategories(ctx context.Context) ([]Category, error) {
@@ -346,6 +372,9 @@ func (q *Queries) GetRootCategories(ctx context.Context) ([]Category, error) {
 			&i.MetaDescription,
 			&i.Keywords,
 			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -360,9 +389,9 @@ func (q *Queries) GetRootCategories(ctx context.Context) ([]Category, error) {
 const updateCategory = `-- name: UpdateCategory :one
 UPDATE categories
 SET name = $2, slug = $3, parent_id = $4, order_index = $5, icon = $6, image = $7, 
-    is_active = $8, show_in_nav = $9, meta_title = $10, meta_description = $11, keywords = $12, is_featured = $13
+    is_active = $8, show_in_nav = $9, meta_title = $10, meta_description = $11, keywords = $12, is_featured = $13, og_image = $14
 WHERE id = $1
-RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured
+RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at
 `
 
 type UpdateCategoryParams struct {
@@ -379,6 +408,7 @@ type UpdateCategoryParams struct {
 	MetaDescription *string     `json:"meta_description"`
 	Keywords        *string     `json:"keywords"`
 	IsFeatured      bool        `json:"is_featured"`
+	OgImage         *string     `json:"og_image"`
 }
 
 func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
@@ -396,6 +426,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		arg.MetaDescription,
 		arg.Keywords,
 		arg.IsFeatured,
+		arg.OgImage,
 	)
 	var i Category
 	err := row.Scan(
@@ -412,6 +443,9 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		&i.MetaDescription,
 		&i.Keywords,
 		&i.IsFeatured,
+		&i.OgImage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

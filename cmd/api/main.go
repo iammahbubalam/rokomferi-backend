@@ -41,6 +41,7 @@ func main() {
 	orderRepo := sqlcrepo.NewOrderRepository(pgxPool)
 	searchRepo := sqlcrepo.NewSearchRepository(pgxPool)
 	txManager := sqlcrepo.NewTransactionManager(pgxPool)
+	couponRepo := sqlcrepo.NewCouponRepository(pgxPool)
 
 	// Set up Router
 	mux := http.NewServeMux()
@@ -79,7 +80,7 @@ func main() {
 	adminCatalogHandler := v1.NewAdminCatalogHandler(catalogUC)
 
 	// Order Module
-	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, txManager)
+	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, couponRepo, txManager)
 	orderHandler := v1.NewOrderHandler(orderUC)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 
@@ -167,6 +168,7 @@ func main() {
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
 	mux.Handle("PUT /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.UpdateCart)))
 	mux.Handle("DELETE /api/v1/cart/{productId}", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.RemoveFromCart)))
+	mux.Handle("POST /api/v1/cart/coupon", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.ApplyCoupon)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 

@@ -7,15 +7,20 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getContentByKey = `-- name: GetContentByKey :one
-SELECT id, section_key, content, created_at, updated_at FROM content_blocks
-WHERE section_key = $1 LIMIT 1
+const getActiveContentBlock = `-- name: GetActiveContentBlock :one
+SELECT id, section_key, content, created_at, updated_at, start_at, end_at, is_active FROM content_blocks 
+WHERE section_key = $1 
+  AND is_active = true 
+  AND (start_at IS NULL OR start_at <= NOW())
+  AND (end_at IS NULL OR end_at > NOW())
 `
 
-func (q *Queries) GetContentByKey(ctx context.Context, sectionKey string) (ContentBlock, error) {
-	row := q.db.QueryRow(ctx, getContentByKey, sectionKey)
+func (q *Queries) GetActiveContentBlock(ctx context.Context, sectionKey string) (ContentBlock, error) {
+	row := q.db.QueryRow(ctx, getActiveContentBlock, sectionKey)
 	var i ContentBlock
 	err := row.Scan(
 		&i.ID,
@@ -23,25 +28,19 @@ func (q *Queries) GetContentByKey(ctx context.Context, sectionKey string) (Conte
 		&i.Content,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StartAt,
+		&i.EndAt,
+		&i.IsActive,
 	)
 	return i, err
 }
 
-const upsertContent = `-- name: UpsertContent :one
-INSERT INTO content_blocks (section_key, content, updated_at)
-VALUES ($1, $2, NOW())
-ON CONFLICT (section_key)
-DO UPDATE SET content = $2, updated_at = NOW()
-RETURNING id, section_key, content, created_at, updated_at
+const getContentBlockByKey = `-- name: GetContentBlockByKey :one
+SELECT id, section_key, content, created_at, updated_at, start_at, end_at, is_active FROM content_blocks WHERE section_key = $1
 `
 
-type UpsertContentParams struct {
-	SectionKey string `json:"section_key"`
-	Content    []byte `json:"content"`
-}
-
-func (q *Queries) UpsertContent(ctx context.Context, arg UpsertContentParams) (ContentBlock, error) {
-	row := q.db.QueryRow(ctx, upsertContent, arg.SectionKey, arg.Content)
+func (q *Queries) GetContentBlockByKey(ctx context.Context, sectionKey string) (ContentBlock, error) {
+	row := q.db.QueryRow(ctx, getContentBlockByKey, sectionKey)
 	var i ContentBlock
 	err := row.Scan(
 		&i.ID,
@@ -49,6 +48,62 @@ func (q *Queries) UpsertContent(ctx context.Context, arg UpsertContentParams) (C
 		&i.Content,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StartAt,
+		&i.EndAt,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const updateContentBlockSchedule = `-- name: UpdateContentBlockSchedule :exec
+UPDATE content_blocks 
+SET start_at = $2, end_at = $3, is_active = $4
+WHERE section_key = $1
+`
+
+type UpdateContentBlockScheduleParams struct {
+	SectionKey string           `json:"section_key"`
+	StartAt    pgtype.Timestamp `json:"start_at"`
+	EndAt      pgtype.Timestamp `json:"end_at"`
+	IsActive   *bool            `json:"is_active"`
+}
+
+func (q *Queries) UpdateContentBlockSchedule(ctx context.Context, arg UpdateContentBlockScheduleParams) error {
+	_, err := q.db.Exec(ctx, updateContentBlockSchedule,
+		arg.SectionKey,
+		arg.StartAt,
+		arg.EndAt,
+		arg.IsActive,
+	)
+	return err
+}
+
+const upsertContentBlock = `-- name: UpsertContentBlock :one
+INSERT INTO content_blocks (section_key, content)
+VALUES ($1, $2)
+ON CONFLICT (section_key) DO UPDATE
+SET content = EXCLUDED.content,
+    updated_at = NOW()
+RETURNING id, section_key, content, created_at, updated_at, start_at, end_at, is_active
+`
+
+type UpsertContentBlockParams struct {
+	SectionKey string `json:"section_key"`
+	Content    []byte `json:"content"`
+}
+
+func (q *Queries) UpsertContentBlock(ctx context.Context, arg UpsertContentBlockParams) (ContentBlock, error) {
+	row := q.db.QueryRow(ctx, upsertContentBlock, arg.SectionKey, arg.Content)
+	var i ContentBlock
+	err := row.Scan(
+		&i.ID,
+		&i.SectionKey,
+		&i.Content,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartAt,
+		&i.EndAt,
+		&i.IsActive,
 	)
 	return i, err
 }
