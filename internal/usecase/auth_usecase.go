@@ -194,6 +194,14 @@ func (u *AuthUsecase) GetAddresses(ctx context.Context, userID string) ([]domain
 	return u.userRepo.GetAddresses(ctx, userID)
 }
 
+func (u *AuthUsecase) DeleteAddress(ctx context.Context, id, userID string) error {
+	return u.userRepo.DeleteAddress(ctx, id, userID)
+}
+
+func (u *AuthUsecase) UpdateProfile(ctx context.Context, userID, firstName, lastName, phone string) (*domain.User, error) {
+	return u.userRepo.UpdateProfile(ctx, userID, firstName, lastName, phone)
+}
+
 type GoogleTokens struct {
 	AccessToken  string `json:"access_token"`
 	IDToken      string `json:"id_token"`

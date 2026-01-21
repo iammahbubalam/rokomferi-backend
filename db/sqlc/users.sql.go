@@ -76,7 +76,7 @@ func (q *Queries) CreateAddress(ctx context.Context, arg CreateAddressParams) (A
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, role, first_name, last_name, avatar)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, email, role, first_name, last_name, avatar, created_at, updated_at
+RETURNING id, email, role, first_name, last_name, avatar, created_at, updated_at, phone
 `
 
 type CreateUserParams struct {
@@ -105,8 +105,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Avatar,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
+}
+
+const deleteAddress = `-- name: DeleteAddress :exec
+DELETE FROM addresses WHERE id = $1 AND user_id = $2
+`
+
+type DeleteAddressParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteAddress(ctx context.Context, arg DeleteAddressParams) error {
+	_, err := q.db.Exec(ctx, deleteAddress, arg.ID, arg.UserID)
+	return err
 }
 
 const getAddressesByUserID = `-- name: GetAddressesByUserID :many
@@ -170,7 +185,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, token string) (RefreshTok
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at, phone FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -185,12 +200,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Avatar,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at, phone FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -205,6 +221,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Avatar,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
 }
@@ -320,7 +337,7 @@ const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET email = $2, role = $3, first_name = $4, last_name = $5, avatar = $6
 WHERE id = $1
-RETURNING id, email, role, first_name, last_name, avatar, created_at, updated_at
+RETURNING id, email, role, first_name, last_name, avatar, created_at, updated_at, phone
 `
 
 type UpdateUserParams struct {
@@ -351,6 +368,43 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.Avatar,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Phone,
+	)
+	return i, err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET first_name = $2, last_name = $3, phone = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING id, email, role, first_name, last_name, avatar, created_at, updated_at, phone
+`
+
+type UpdateUserProfileParams struct {
+	ID        pgtype.UUID `json:"id"`
+	FirstName *string     `json:"first_name"`
+	LastName  *string     `json:"last_name"`
+	Phone     *string     `json:"phone"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.ID,
+		arg.FirstName,
+		arg.LastName,
+		arg.Phone,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.FirstName,
+		&i.LastName,
+		&i.Avatar,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Phone,
 	)
 	return i, err
 }

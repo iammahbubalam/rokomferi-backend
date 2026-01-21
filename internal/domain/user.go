@@ -15,6 +15,7 @@ type User struct {
 	Role      string    `json:"role"`
 	FirstName string    `json:"firstName"`
 	LastName  string    `json:"lastName"`
+	Phone     string    `json:"phone"`
 	Avatar    string    `json:"avatar"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -62,11 +63,13 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetAll(ctx context.Context) ([]*User, error)
 	Update(ctx context.Context, user *User) error
+	UpdateProfile(ctx context.Context, id, firstName, lastName, phone string) (*User, error)
 
 	// Addresses
 	AddAddress(ctx context.Context, addr *Address) error
 	UpdateAddress(ctx context.Context, addr *Address) error
 	GetAddresses(ctx context.Context, userID string) ([]Address, error)
+	DeleteAddress(ctx context.Context, id, userID string) error
 
 	// Refresh Tokens
 	SaveRefreshToken(ctx context.Context, token *RefreshToken) error

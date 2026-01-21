@@ -104,6 +104,8 @@ func main() {
 	mux.Handle("POST /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.AddAddress)))
 	mux.Handle("GET /api/v1/user/addresses", middleware.AuthMiddleware(http.HandlerFunc(authHandler.GetAddresses)))
 	mux.Handle("PUT /api/v1/user/addresses/{id}", middleware.AuthMiddleware(http.HandlerFunc(authHandler.UpdateAddress)))
+	mux.Handle("DELETE /api/v1/user/addresses/{id}", middleware.AuthMiddleware(http.HandlerFunc(authHandler.DeleteAddress)))
+	mux.Handle("PUT /api/v1/user/profile", middleware.AuthMiddleware(http.HandlerFunc(authHandler.UpdateProfile)))
 
 	// Uploads
 	mux.Handle("POST /api/v1/upload", middleware.AuthMiddleware(http.HandlerFunc(uploadHandler.UploadFile)))

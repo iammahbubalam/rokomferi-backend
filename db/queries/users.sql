@@ -29,6 +29,14 @@ SET label = $2, contact_email = $3, phone = $4, first_name = $5, last_name = $6,
 WHERE id = $1 AND user_id = $15
 RETURNING *;
 
+-- name: DeleteAddress :exec
+DELETE FROM addresses WHERE id = $1 AND user_id = $2;
+
+-- name: UpdateUserProfile :one
+UPDATE users
+SET first_name = $2, last_name = $3, phone = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
 
 -- name: SaveRefreshToken :one
 INSERT INTO refresh_tokens (token, user_id, expires_at, device)
@@ -40,3 +48,4 @@ SELECT * FROM refresh_tokens WHERE token = $1 AND revoked = false;
 
 -- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens SET revoked = true WHERE token = $1;
+

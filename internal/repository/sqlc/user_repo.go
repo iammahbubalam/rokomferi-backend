@@ -84,6 +84,7 @@ func sqlcUserToDomain(u sqlc.User) *domain.User {
 		Role:      u.Role,
 		FirstName: ptrString(u.FirstName),
 		LastName:  ptrString(u.LastName),
+		Phone:     ptrString(u.Phone),
 		Avatar:    ptrString(u.Avatar),
 		CreatedAt: pgtimeToTime(u.CreatedAt),
 		UpdatedAt: pgtimeToTime(u.UpdatedAt),
@@ -184,6 +185,19 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	return err
 }
 
+func (r *userRepository) UpdateProfile(ctx context.Context, id, firstName, lastName, phone string) (*domain.User, error) {
+	u, err := r.queries.UpdateUserProfile(ctx, sqlc.UpdateUserProfileParams{
+		ID:        stringToUUID(id),
+		FirstName: strPtr(firstName),
+		LastName:  strPtr(lastName),
+		Phone:     strPtr(phone),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sqlcUserToDomain(u), nil
+}
+
 // --- Addresses ---
 
 func (r *userRepository) AddAddress(ctx context.Context, addr *domain.Address) error {
@@ -274,4 +288,11 @@ func (r *userRepository) GetRefreshToken(ctx context.Context, token string) (*do
 
 func (r *userRepository) RevokeRefreshToken(ctx context.Context, token string) error {
 	return r.queries.RevokeRefreshToken(ctx, token)
+}
+
+func (r *userRepository) DeleteAddress(ctx context.Context, id, userID string) error {
+	return r.queries.DeleteAddress(ctx, sqlc.DeleteAddressParams{
+		ID:     stringToUUID(id),
+		UserID: stringToUUID(userID),
+	})
 }

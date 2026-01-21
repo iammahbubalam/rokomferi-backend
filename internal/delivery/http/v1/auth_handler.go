@@ -152,6 +152,52 @@ func (h *AuthHandler) GetAddresses(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(addrs)
 }
 
+func (h *AuthHandler) DeleteAddress(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "Address ID required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.authUC.DeleteAddress(r.Context(), id, user.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Phone     string `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	updatedUser, err := h.authUC.UpdateProfile(r.Context(), user.ID, req.FirstName, req.LastName, req.Phone)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updatedUser)
+}
+
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// Assumes AuthMiddleware has run and set User in context
 	userCtx, ok := r.Context().Value(domain.UserContextKey).(*domain.User)

@@ -168,6 +168,7 @@ type User struct {
 	Avatar    *string          `json:"avatar"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 	UpdatedAt pgtype.Timestamp `json:"updated_at"`
+	Phone     *string          `json:"phone"`
 }
 
 type Variant struct {

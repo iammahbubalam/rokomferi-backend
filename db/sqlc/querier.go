@@ -36,6 +36,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVariant(ctx context.Context, arg CreateVariantParams) (Variant, error)
 	CreateWishlist(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
+	DeleteAddress(ctx context.Context, arg DeleteAddressParams) error
 	DeleteCategory(ctx context.Context, id pgtype.UUID) error
 	DeleteCollection(ctx context.Context, id pgtype.UUID) error
 	DeleteProduct(ctx context.Context, id pgtype.UUID) error
@@ -102,6 +103,7 @@ type Querier interface {
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error
 	UpdateProductStock(ctx context.Context, arg UpdateProductStockParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
 	UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error)
 	UpsertContent(ctx context.Context, arg UpsertContentParams) (ContentBlock, error)

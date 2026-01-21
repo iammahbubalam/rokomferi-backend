@@ -10,7 +10,7 @@ import (
 )
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at FROM users
+SELECT id, email, role, first_name, last_name, avatar, created_at, updated_at, phone FROM users
 ORDER BY created_at DESC
 `
 
@@ -32,6 +32,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.Avatar,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Phone,
 		); err != nil {
 			return nil, err
 		}
