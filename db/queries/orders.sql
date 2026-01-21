@@ -34,6 +34,7 @@ WHERE c.user_id = $1;
 SELECT * FROM cart_items WHERE cart_id = $1 AND product_id = $2;
 
 -- name: UpsertCartItemAtomic :many
+-- L9 FIX: Simplified atomic upsert without expression-based conflict target
 WITH 
   user_cart AS (
     SELECT id FROM carts WHERE user_id = sqlc.arg(user_id)
@@ -42,22 +43,38 @@ WITH
     SELECT p.id FROM products p
     WHERE p.id = sqlc.arg(product_id)
       AND p.stock >= sqlc.arg(quantity)
+      AND p.is_active = TRUE
       AND (p.stock_status IS NULL OR p.stock_status != 'out_of_stock')
   ),
-  upserted AS (
-    INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
-    SELECT user_cart.id, sqlc.arg(product_id), sqlc.arg(variant_id), sqlc.arg(quantity)
-    FROM user_cart
-    CROSS JOIN stock_valid
-    ON CONFLICT (cart_id, product_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)))
-    DO UPDATE SET quantity = EXCLUDED.quantity
+  existing_item AS (
+    SELECT ci.id FROM cart_items ci
+    JOIN user_cart uc ON ci.cart_id = uc.id
+    WHERE ci.product_id = sqlc.arg(product_id)
+      AND (ci.variant_id IS NOT DISTINCT FROM sqlc.arg(variant_id))
+  ),
+  updated AS (
+    UPDATE cart_items SET quantity = sqlc.arg(quantity)
+    WHERE id = (SELECT id FROM existing_item)
     RETURNING cart_id
+  ),
+  inserted AS (
+    INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
+    SELECT uc.id, sqlc.arg(product_id), sqlc.arg(variant_id), sqlc.arg(quantity)
+    FROM user_cart uc
+    CROSS JOIN stock_valid sv
+    WHERE NOT EXISTS (SELECT 1 FROM existing_item)
+    RETURNING cart_id
+  ),
+  affected_cart AS (
+    SELECT cart_id FROM updated
+    UNION ALL
+    SELECT cart_id FROM inserted
   )
 SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
        p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
-WHERE ci.cart_id = (SELECT cart_id FROM upserted LIMIT 1);
+WHERE ci.cart_id = (SELECT cart_id FROM affected_cart LIMIT 1);
 
 
 

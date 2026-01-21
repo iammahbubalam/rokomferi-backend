@@ -510,22 +510,38 @@ WITH
     SELECT p.id FROM products p
     WHERE p.id = $2
       AND p.stock >= $3
+      AND p.is_active = TRUE
       AND (p.stock_status IS NULL OR p.stock_status != 'out_of_stock')
   ),
-  upserted AS (
-    INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
-    SELECT user_cart.id, $2, $4, $3
-    FROM user_cart
-    CROSS JOIN stock_valid
-    ON CONFLICT (cart_id, product_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)))
-    DO UPDATE SET quantity = EXCLUDED.quantity
+  existing_item AS (
+    SELECT ci.id FROM cart_items ci
+    JOIN user_cart uc ON ci.cart_id = uc.id
+    WHERE ci.product_id = $2
+      AND (ci.variant_id IS NOT DISTINCT FROM $4)
+  ),
+  updated AS (
+    UPDATE cart_items SET quantity = $3
+    WHERE id = (SELECT id FROM existing_item)
     RETURNING cart_id
+  ),
+  inserted AS (
+    INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
+    SELECT uc.id, $2, $4, $3
+    FROM user_cart uc
+    CROSS JOIN stock_valid sv
+    WHERE NOT EXISTS (SELECT 1 FROM existing_item)
+    RETURNING cart_id
+  ),
+  affected_cart AS (
+    SELECT cart_id FROM updated
+    UNION ALL
+    SELECT cart_id FROM inserted
   )
 SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
        p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
-WHERE ci.cart_id = (SELECT cart_id FROM upserted LIMIT 1)
+WHERE ci.cart_id = (SELECT cart_id FROM affected_cart LIMIT 1)
 `
 
 type UpsertCartItemAtomicParams struct {
@@ -549,6 +565,7 @@ type UpsertCartItemAtomicRow struct {
 	Stock     int32          `json:"stock"`
 }
 
+// L9 FIX: Simplified atomic upsert without expression-based conflict target
 func (q *Queries) UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error) {
 	rows, err := q.db.Query(ctx, upsertCartItemAtomic,
 		arg.UserID,

@@ -120,6 +120,7 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
+	// L9 FIX: Simplified atomic upsert without expression-based conflict target
 	UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error)
 	UpsertContentBlock(ctx context.Context, arg UpsertContentBlockParams) (ContentBlock, error)
 	UpsertDailySalesStat(ctx context.Context, arg UpsertDailySalesStatParams) error
