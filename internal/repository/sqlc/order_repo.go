@@ -143,47 +143,57 @@ func (r *orderRepository) CreateCart(ctx context.Context, cart *domain.Cart) err
 	return nil
 }
 
-func (r *orderRepository) UpdateCart(ctx context.Context, cart *domain.Cart) error {
-	cartUUID := stringToUUID(cart.ID)
+func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, productID string, variantID *string, quantity int) ([]domain.CartItem, error) {
+	var variantUUID pgtype.UUID
+	if variantID != nil {
+		variantUUID = stringToUUID(*variantID)
+	}
 
-	// Clear existing items and re-add
-	err := r.queries.ClearCart(ctx, cartUUID)
+	rows, err := r.queries.UpsertCartItemAtomic(ctx, sqlc.UpsertCartItemAtomicParams{
+		UserID:    stringToUUID(userID),
+		ProductID: stringToUUID(productID),
+		VariantID: variantUUID,
+		Quantity:  int32(quantity),
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for _, item := range cart.Items {
-		var variantID pgtype.UUID
-		if item.VariantID != nil {
-			variantID = stringToUUID(*item.VariantID)
+	// Map rows to CartItems
+	items := make([]domain.CartItem, len(rows))
+	for i, row := range rows {
+		items[i] = domain.CartItem{
+			ID:        row.ID.String(),
+			CartID:    row.CartID.String(),
+			ProductID: row.ProductID.String(),
+			Quantity:  int(row.Quantity),
+			Product: domain.Product{
+				ID:        row.ProductID.String(),
+				Name:      row.Name,
+				Slug:      row.Slug,
+				BasePrice: numericToFloat64(row.BasePrice),
+				SalePrice: numericToFloat64Ptr(row.SalePrice),
+				Stock:     int(row.Stock),
+			},
 		}
-
-		_, err := r.queries.AddCartItem(ctx, sqlc.AddCartItemParams{
-			CartID:    cartUUID,
-			ProductID: stringToUUID(item.ProductID),
-			VariantID: variantID,
-			Quantity:  int32(item.Quantity),
-		})
-		if err != nil {
-			return err
+		if row.VariantID.Valid {
+			vid := uuidToString(row.VariantID)
+			items[i].VariantID = &vid
+		}
+		if len(row.Media) > 0 {
+			items[i].Product.Media = domain.RawJSON(row.Media)
+			mapMediaToImages(&items[i].Product)
 		}
 	}
-	return nil
+
+	return items, nil
 }
 
-func (r *orderRepository) UpsertCartItem(ctx context.Context, cartID string, item domain.CartItem) error {
-	var variantID pgtype.UUID
-	if item.VariantID != nil {
-		variantID = stringToUUID(*item.VariantID)
-	}
-
-	_, err := r.queries.UpsertCartItem(ctx, sqlc.UpsertCartItemParams{
-		CartID:    stringToUUID(cartID),
-		ProductID: stringToUUID(item.ProductID),
-		VariantID: variantID,
-		Quantity:  int32(item.Quantity),
+func (r *orderRepository) AtomicRemoveCartItem(ctx context.Context, userID, productID string) error {
+	return r.queries.AtomicRemoveCartItem(ctx, sqlc.AtomicRemoveCartItemParams{
+		UserID:    stringToUUID(userID),
+		ProductID: stringToUUID(productID),
 	})
-	return err
 }
 
 func (r *orderRepository) ClearCart(ctx context.Context, cartID string) error {

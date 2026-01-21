@@ -157,6 +157,7 @@ func main() {
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
 
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
+	mux.Handle("PUT /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.UpdateCart)))
 	mux.Handle("DELETE /api/v1/cart/{productId}", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.RemoveFromCart)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))

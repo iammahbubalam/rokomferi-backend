@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
@@ -25,38 +26,48 @@ func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository
 // --- Cart Logic ---
 
 func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Cart, error) {
-	cart, err := u.orderRepo.GetCartByUserID(ctx, userID)
+	// 🔥 OPTIMIZED: 1 DB call gets cart + all items with product details
+	items, err := u.orderRepo.GetCartWithItems(ctx, userID)
 	if err != nil {
+		// If query failed due to no cart existing, create one
+		if err.Error() == "no rows in result set" || err.Error() == "sql: no rows in result set" {
+			cart := &domain.Cart{
+				ID:     utils.GenerateUUID(),
+				UserID: &userID,
+			}
+			if createErr := u.orderRepo.CreateCart(ctx, cart); createErr != nil {
+				return nil, createErr
+			}
+			return cart, nil
+		}
 		return nil, err
 	}
-	if cart == nil {
-		// Auto-create cart for user if missing
+
+	// Build cart from items (use GetCartByUserID to get cart ID if needed)
+	cart, cartErr := u.orderRepo.GetCartByUserID(ctx, userID)
+	if cartErr != nil {
+		// Shouldn't happen since GetCartWithItems succeeded, but handle it
 		cart = &domain.Cart{
 			ID:     utils.GenerateUUID(),
 			UserID: &userID,
 		}
-		if err := u.orderRepo.CreateCart(ctx, cart); err != nil {
-			return nil, err
+		if createErr := u.orderRepo.CreateCart(ctx, cart); createErr != nil {
+			return nil, createErr
 		}
 	}
+
+	cart.Items = items
 	return cart, nil
 }
 
 func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID string, quantity int) (*domain.Cart, error) {
+	// Get cart and existing quantity
 	cart, err := u.GetMyCart(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch Product to verify existence and price
-	product, err := u.productRepo.GetProductByID(ctx, productID)
-	if err != nil {
-		return nil, err
-	}
-
-	// LOCK 2: API Gatekeeper - Strict Stock Validation
-
-	// Check existing quantity in cart
+	// Check existing quantity
 	existingQty := 0
 	for _, item := range cart.Items {
 		if item.ProductID == productID {
@@ -65,27 +76,43 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 		}
 	}
 
-	totalRequested := existingQty + quantity
+	// Calculate new total
+	newTotal := existingQty + quantity
 
-	if product.Stock < totalRequested {
-		return nil, fmt.Errorf("insufficient stock for %s (requested total: %d, available: %d)", product.Name, totalRequested, product.Stock)
+	// Use atomic upsert with new total
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, nil, newTotal)
+	if err != nil || len(items) == 0 {
+		// Get product for better error message
+		product, pErr := u.productRepo.GetProductByID(ctx, productID)
+		if pErr != nil {
+			return nil, fmt.Errorf("product not found")
+		}
+		if product.Stock < newTotal {
+			return nil, fmt.Errorf("insufficient stock for %s (available: %d)", product.Name, product.Stock)
+		}
+		if product.StockStatus == "out_of_stock" {
+			return nil, fmt.Errorf("product %s is out of stock", product.Name)
+		}
+
+		// Debug why atomic query failed
+		log.Printf("DEBUG AddToCart: Cart exists (id=%s), Product exists (id=%s, stock=%d, stock_status=%v), Existing qty=%d, Adding=%d, New total=%d, but atomic query returned %d items",
+			cart.ID, productID, product.Stock, product.StockStatus, existingQty, quantity, newTotal, len(items))
+
+		return nil, fmt.Errorf("failed to add to cart")
 	}
-	if product.StockStatus == "out_of_stock" {
-		return nil, fmt.Errorf("product %s is currently out of stock", product.Name)
-	}
 
-	// Optimized O(1) Upsert
-	cartItem := domain.CartItem{
-		Product:   *product,
-		ProductID: productID,
-		Quantity:  quantity,
-	}
+	// Return cart with all items
+	return &domain.Cart{
+		ID:     items[0].CartID,
+		UserID: &userID,
+		Items:  items,
+	}, nil
+}
 
-	// Helper to check current qty if adding relatively (logic simplification: assuming passed quantity is what to ADD)
-	// But UpsertCartItem in SQL does: quantity = cart_items.quantity + EXCLUDED.quantity
-	// So we just pass the delta 'quantity'.
-
-	if err := u.orderRepo.UpsertCartItem(ctx, cart.ID, cartItem); err != nil {
+// RemoveFromCart removes a product from the user's cart
+func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, productID string) (*domain.Cart, error) {
+	// Atomic O(1) Remove
+	if err := u.orderRepo.AtomicRemoveCartItem(ctx, userID, productID); err != nil {
 		return nil, err
 	}
 
@@ -93,24 +120,58 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 	return u.GetMyCart(ctx, userID)
 }
 
-// RemoveFromCart removes a product from the user's cart
-func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, productID string) (*domain.Cart, error) {
-	cart, err := u.GetMyCart(ctx, userID)
+func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string, productID string, quantity int) (*domain.Cart, error) {
+	if quantity <= 0 {
+		return u.RemoveFromCart(ctx, userID, productID)
+	}
+
+	// 🔥 ATOMIC: 1 DB CALL DOES EVERYTHING 🔥
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, nil, quantity)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update cart: %w", err)
 	}
 
-	// Find and remove the item
-	for i, item := range cart.Items {
-		if item.ProductID == productID {
-			cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
-			break
+	// If no items returned, the atomic operation didn't insert/update anything
+	// This means EITHER user has no cart OR product stock is insufficient
+	if len(items) == 0 {
+		// Check what actually failed
+		// 1. Does user have a cart?
+		cart, cartErr := u.GetMyCart(ctx, userID)
+		if cartErr != nil {
+			return nil, fmt.Errorf("cart not found")
 		}
+
+		// 2. Does product exist and have enough stock?
+		product, pErr := u.productRepo.GetProductByID(ctx, productID)
+		if pErr != nil {
+			return nil, fmt.Errorf("product not found")
+		}
+
+		// 3. Stock validation
+		if product.Stock < quantity {
+			return nil, fmt.Errorf("insufficient stock (available: %d)", product.Stock)
+		}
+		if product.StockStatus == "out_of_stock" {
+			return nil, fmt.Errorf("product is out of stock")
+		}
+
+		// If we got here, cart exists, product exists, stock is sufficient
+		// But atomic query still failed - this is likely a bug in the SQL
+		log.Printf("DEBUG: Cart exists (id=%s), Product exists (id=%s, stock=%d), Requested qty=%d, but atomic query returned 0 items",
+			cart.ID, productID, product.Stock, quantity)
+		return nil, fmt.Errorf("unable to update cart: cart_id=%s, product_id=%s", cart.ID, productID)
 	}
 
-	if err := u.orderRepo.UpdateCart(ctx, cart); err != nil {
-		return nil, err
+	// Success! Build cart from returned items
+	cart := &domain.Cart{
+		UserID: &userID,
+		Items:  items,
 	}
+
+	if len(items) > 0 {
+		cart.ID = items[0].CartID
+	}
+
 	return cart, nil
 }
 

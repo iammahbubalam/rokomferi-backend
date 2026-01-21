@@ -11,9 +11,9 @@ import (
 )
 
 type Querier interface {
-	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddProductCategory(ctx context.Context, arg AddProductCategoryParams) error
 	AddProductToCollection(ctx context.Context, arg AddProductToCollectionParams) error
+	AtomicRemoveCartItem(ctx context.Context, arg AtomicRemoveCartItemParams) error
 	ClearCart(ctx context.Context, cartID pgtype.UUID) error
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
@@ -48,6 +48,7 @@ type Querier interface {
 	GetCartByUserID(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	GetCartItemByProductID(ctx context.Context, arg GetCartItemByProductIDParams) (CartItem, error)
 	GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCartItemsRow, error)
+	GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]GetCartWithItemsRow, error)
 	GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Category, error)
 	GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category, error)
 	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
@@ -80,13 +81,11 @@ type Querier interface {
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
 	HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error)
 	ListUsers(ctx context.Context) ([]User, error)
-	RemoveCartItem(ctx context.Context, id pgtype.UUID) error
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error
 	SaveRefreshToken(ctx context.Context, arg SaveRefreshTokenParams) (RefreshToken, error)
 	UpdateAddress(ctx context.Context, arg UpdateAddressParams) (Address, error)
-	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) error
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	UpdateCategoryOrder(ctx context.Context, arg UpdateCategoryOrderParams) error
 	UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error)
@@ -96,7 +95,7 @@ type Querier interface {
 	UpdateProductStock(ctx context.Context, arg UpdateProductStockParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
-	UpsertCartItem(ctx context.Context, arg UpsertCartItemParams) (CartItem, error)
+	UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error)
 	UpsertContent(ctx context.Context, arg UpsertContentParams) (ContentBlock, error)
 }
 

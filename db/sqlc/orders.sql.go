@@ -11,35 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addCartItem = `-- name: AddCartItem :one
-INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
-VALUES ($1, $2, $3, $4)
-RETURNING id, cart_id, product_id, variant_id, quantity
+const atomicRemoveCartItem = `-- name: AtomicRemoveCartItem :exec
+DELETE FROM cart_items ci
+USING carts c
+WHERE ci.cart_id = c.id
+  AND c.user_id = $1
+  AND ci.product_id = $2
 `
 
-type AddCartItemParams struct {
-	CartID    pgtype.UUID `json:"cart_id"`
+type AtomicRemoveCartItemParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
 	ProductID pgtype.UUID `json:"product_id"`
-	VariantID pgtype.UUID `json:"variant_id"`
-	Quantity  int32       `json:"quantity"`
 }
 
-func (q *Queries) AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error) {
-	row := q.db.QueryRow(ctx, addCartItem,
-		arg.CartID,
-		arg.ProductID,
-		arg.VariantID,
-		arg.Quantity,
-	)
-	var i CartItem
-	err := row.Scan(
-		&i.ID,
-		&i.CartID,
-		&i.ProductID,
-		&i.VariantID,
-		&i.Quantity,
-	)
-	return i, err
+func (q *Queries) AtomicRemoveCartItem(ctx context.Context, arg AtomicRemoveCartItemParams) error {
+	_, err := q.db.Exec(ctx, atomicRemoveCartItem, arg.UserID, arg.ProductID)
+	return err
 }
 
 const clearCart = `-- name: ClearCart :exec
@@ -305,6 +292,74 @@ func (q *Queries) GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCa
 	return items, nil
 }
 
+const getCartWithItems = `-- name: GetCartWithItems :many
+SELECT 
+    c.id as cart_id,
+    c.user_id,
+    ci.id as item_id,
+    ci.product_id,
+    ci.variant_id,
+    ci.quantity,
+    p.name,
+    p.slug,
+    p.base_price,
+    p.sale_price,
+    p.media,
+    p.stock
+FROM carts c
+LEFT JOIN cart_items ci ON c.id = ci.cart_id
+LEFT JOIN products p ON ci.product_id = p.id
+WHERE c.user_id = $1
+`
+
+type GetCartWithItemsRow struct {
+	CartID    pgtype.UUID    `json:"cart_id"`
+	UserID    pgtype.UUID    `json:"user_id"`
+	ItemID    pgtype.UUID    `json:"item_id"`
+	ProductID pgtype.UUID    `json:"product_id"`
+	VariantID pgtype.UUID    `json:"variant_id"`
+	Quantity  *int32         `json:"quantity"`
+	Name      *string        `json:"name"`
+	Slug      *string        `json:"slug"`
+	BasePrice pgtype.Numeric `json:"base_price"`
+	SalePrice pgtype.Numeric `json:"sale_price"`
+	Media     []byte         `json:"media"`
+	Stock     *int32         `json:"stock"`
+}
+
+func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]GetCartWithItemsRow, error) {
+	rows, err := q.db.Query(ctx, getCartWithItems, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCartWithItemsRow{}
+	for rows.Next() {
+		var i GetCartWithItemsRow
+		if err := rows.Scan(
+			&i.CartID,
+			&i.UserID,
+			&i.ItemID,
+			&i.ProductID,
+			&i.VariantID,
+			&i.Quantity,
+			&i.Name,
+			&i.Slug,
+			&i.BasePrice,
+			&i.SalePrice,
+			&i.Media,
+			&i.Stock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getOrderByID = `-- name: GetOrderByID :one
 SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at FROM orders WHERE id = $1
 `
@@ -432,29 +487,6 @@ func (q *Queries) HasPurchasedProduct(ctx context.Context, arg HasPurchasedProdu
 	return exists, err
 }
 
-const removeCartItem = `-- name: RemoveCartItem :exec
-DELETE FROM cart_items WHERE id = $1
-`
-
-func (q *Queries) RemoveCartItem(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, removeCartItem, id)
-	return err
-}
-
-const updateCartItemQuantity = `-- name: UpdateCartItemQuantity :exec
-UPDATE cart_items SET quantity = $2 WHERE id = $1
-`
-
-type UpdateCartItemQuantityParams struct {
-	ID       pgtype.UUID `json:"id"`
-	Quantity int32       `json:"quantity"`
-}
-
-func (q *Queries) UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) error {
-	_, err := q.db.Exec(ctx, updateCartItemQuantity, arg.ID, arg.Quantity)
-	return err
-}
-
 const updateOrderStatus = `-- name: UpdateOrderStatus :exec
 UPDATE orders SET status = $2 WHERE id = $1
 `
@@ -469,35 +501,87 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 	return err
 }
 
-const upsertCartItem = `-- name: UpsertCartItem :one
-INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (cart_id, product_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)))
-DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
-RETURNING id, cart_id, product_id, variant_id, quantity
+const upsertCartItemAtomic = `-- name: UpsertCartItemAtomic :many
+WITH 
+  user_cart AS (
+    SELECT id FROM carts WHERE user_id = $1
+  ),
+  stock_valid AS (
+    SELECT p.id FROM products p
+    WHERE p.id = $2
+      AND p.stock >= $3
+      AND (p.stock_status IS NULL OR p.stock_status != 'out_of_stock')
+  ),
+  upserted AS (
+    INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
+    SELECT user_cart.id, $2, $4, $3
+    FROM user_cart
+    CROSS JOIN stock_valid
+    ON CONFLICT (cart_id, product_id, (COALESCE(variant_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+    DO UPDATE SET quantity = EXCLUDED.quantity
+    RETURNING cart_id
+  )
+SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
+       p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
+FROM cart_items ci
+JOIN products p ON p.id = ci.product_id
+WHERE ci.cart_id = (SELECT cart_id FROM upserted LIMIT 1)
 `
 
-type UpsertCartItemParams struct {
-	CartID    pgtype.UUID `json:"cart_id"`
+type UpsertCartItemAtomicParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
 	ProductID pgtype.UUID `json:"product_id"`
-	VariantID pgtype.UUID `json:"variant_id"`
 	Quantity  int32       `json:"quantity"`
+	VariantID pgtype.UUID `json:"variant_id"`
 }
 
-func (q *Queries) UpsertCartItem(ctx context.Context, arg UpsertCartItemParams) (CartItem, error) {
-	row := q.db.QueryRow(ctx, upsertCartItem,
-		arg.CartID,
+type UpsertCartItemAtomicRow struct {
+	ID        pgtype.UUID    `json:"id"`
+	CartID    pgtype.UUID    `json:"cart_id"`
+	ProductID pgtype.UUID    `json:"product_id"`
+	VariantID pgtype.UUID    `json:"variant_id"`
+	Quantity  int32          `json:"quantity"`
+	Name      string         `json:"name"`
+	Slug      string         `json:"slug"`
+	BasePrice pgtype.Numeric `json:"base_price"`
+	SalePrice pgtype.Numeric `json:"sale_price"`
+	Media     []byte         `json:"media"`
+	Stock     int32          `json:"stock"`
+}
+
+func (q *Queries) UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error) {
+	rows, err := q.db.Query(ctx, upsertCartItemAtomic,
+		arg.UserID,
 		arg.ProductID,
-		arg.VariantID,
 		arg.Quantity,
+		arg.VariantID,
 	)
-	var i CartItem
-	err := row.Scan(
-		&i.ID,
-		&i.CartID,
-		&i.ProductID,
-		&i.VariantID,
-		&i.Quantity,
-	)
-	return i, err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UpsertCartItemAtomicRow{}
+	for rows.Next() {
+		var i UpsertCartItemAtomicRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CartID,
+			&i.ProductID,
+			&i.VariantID,
+			&i.Quantity,
+			&i.Name,
+			&i.Slug,
+			&i.BasePrice,
+			&i.SalePrice,
+			&i.Media,
+			&i.Stock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

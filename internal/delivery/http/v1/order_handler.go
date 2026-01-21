@@ -82,6 +82,41 @@ func (h *OrderHandler) RemoveFromCart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(cart)
 }
 
+func (h *OrderHandler) UpdateCart(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		ProductID string `json:"productId"`
+		Quantity  int    `json:"quantity"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	cart, err := h.orderUC.UpdateCartItemQuantity(r.Context(), user.ID, req.ProductID, req.Quantity)
+	if err != nil {
+		slog.Error("UpdateCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
+
+		statusCode := http.StatusInternalServerError
+		if contains(err.Error(), "insufficient stock") || contains(err.Error(), "out of stock") || contains(err.Error(), "not found") {
+			statusCode = http.StatusBadRequest
+		}
+
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cart)
+}
+
 // --- Order Handlers ---
 
 func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
