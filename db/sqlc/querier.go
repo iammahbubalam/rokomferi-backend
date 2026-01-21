@@ -23,6 +23,7 @@ type Querier interface {
 	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
 	CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error)
 	CountProductsWithSearch(ctx context.Context, arg CountProductsWithSearchParams) (int64, error)
+	CountSearchProducts(ctx context.Context, arg CountSearchProductsParams) (int64, error)
 	CreateAddress(ctx context.Context, arg CreateAddressParams) (Address, error)
 	CreateCart(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
@@ -91,6 +92,7 @@ type Querier interface {
 	RemoveWishlistItem(ctx context.Context, arg RemoveWishlistItemParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error
 	SaveRefreshToken(ctx context.Context, arg SaveRefreshTokenParams) (RefreshToken, error)
+	SearchProducts(ctx context.Context, arg SearchProductsParams) ([]SearchProductsRow, error)
 	UpdateAddress(ctx context.Context, arg UpdateAddressParams) (Address, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	UpdateCategoryOrder(ctx context.Context, arg UpdateCategoryOrderParams) error

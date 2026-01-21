@@ -39,6 +39,7 @@ func main() {
 	userRepo := sqlcrepo.NewUserRepository(pgxPool)
 	productRepo := sqlcrepo.NewProductRepository(pgxPool)
 	orderRepo := sqlcrepo.NewOrderRepository(pgxPool)
+	searchRepo := sqlcrepo.NewSearchRepository(pgxPool)
 	txManager := sqlcrepo.NewTransactionManager(pgxPool)
 
 	// Set up Router
@@ -87,6 +88,10 @@ func main() {
 	contentUC := usecase.NewContentUsecase(contentRepo)
 	contentHandler := v1.NewContentHandler(contentUC)
 
+	// Search Module
+	searchUC := usecase.NewSearchUsecase(searchRepo, 5*time.Second)
+	searchHandler := v1.NewSearchHandler(searchUC)
+
 	// --- Routes ---
 
 	// Auth
@@ -112,6 +117,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/products", catalogHandler.ListProducts)
 	mux.HandleFunc("GET /api/v1/product/{id}", catalogHandler.GetProductByID)
 	mux.HandleFunc("GET /api/v1/products/{slug}", catalogHandler.GetProductDetails)
+	mux.HandleFunc("GET /api/v1/search", searchHandler.Search)
 	mux.HandleFunc("GET /api/v1/products/{id}/reviews", catalogHandler.GetReviews)                                          // Public
 	mux.Handle("POST /api/v1/products/{id}/reviews", middleware.AuthMiddleware(http.HandlerFunc(catalogHandler.AddReview))) // Protected
 

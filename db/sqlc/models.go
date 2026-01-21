@@ -127,6 +127,7 @@ type Product struct {
 	Specifications    []byte           `json:"specifications"`
 	CreatedAt         pgtype.Timestamp `json:"created_at"`
 	UpdatedAt         pgtype.Timestamp `json:"updated_at"`
+	SearchVector      interface{}      `json:"search_vector"`
 }
 
 type ProductCategory struct {

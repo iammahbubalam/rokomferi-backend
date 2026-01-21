@@ -60,3 +60,19 @@ func (j *RawJSON) UnmarshalJSON(data []byte) error {
 	*j = append((*j)[0:0], data...)
 	return nil
 }
+
+// Pagination
+type Pagination struct {
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	TotalItems int64 `json:"totalItems"`
+	TotalPages int   `json:"totalPages"`
+}
+
+// Response standardizes API responses.
+type Response struct {
+	Success bool        `json:"success"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+	Meta    interface{} `json:"meta,omitempty"`
+}
