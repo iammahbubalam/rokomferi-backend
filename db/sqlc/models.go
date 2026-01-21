@@ -83,9 +83,12 @@ type ContentBlock struct {
 	Content    []byte             `json:"content"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	StartAt    pgtype.Timestamp   `json:"start_at"`
-	EndAt      pgtype.Timestamp   `json:"end_at"`
-	IsActive   *bool              `json:"is_active"`
+	// L9: Content activation timestamp (null = immediate)
+	StartAt pgtype.Timestamp `json:"start_at"`
+	// L9: Content expiration timestamp (null = never)
+	EndAt pgtype.Timestamp `json:"end_at"`
+	// L9: Master toggle for content visibility
+	IsActive *bool `json:"is_active"`
 }
 
 type Coupon struct {
