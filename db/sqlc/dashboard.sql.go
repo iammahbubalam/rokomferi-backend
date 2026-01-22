@@ -12,26 +12,38 @@ import (
 )
 
 const getCustomerLTV = `-- name: GetCustomerLTV :many
-SELECT u.id, u.first_name, u.last_name, u.email, COUNT(o.id) as total_orders, SUM(o.total_amount) as lifetime_value
+SELECT 
+  u.id, u.first_name, u.last_name, u.email,
+  COUNT(o.id)::bigint as total_orders,
+  SUM(o.total_amount)::numeric as lifetime_value
 FROM users u
 JOIN orders o ON o.user_id = u.id
-WHERE o.status = 'delivered'
+WHERE o.created_at >= $1::timestamp
+  AND o.created_at <= $2::timestamp
+  AND o.status NOT IN ('cancelled', 'returned')
 GROUP BY u.id, u.first_name, u.last_name, u.email
 ORDER BY lifetime_value DESC
-LIMIT 50
+LIMIT $3::int
 `
 
-type GetCustomerLTVRow struct {
-	ID            pgtype.UUID `json:"id"`
-	FirstName     *string     `json:"first_name"`
-	LastName      *string     `json:"last_name"`
-	Email         string      `json:"email"`
-	TotalOrders   int64       `json:"total_orders"`
-	LifetimeValue int64       `json:"lifetime_value"`
+type GetCustomerLTVParams struct {
+	StartDate  pgtype.Timestamp `json:"start_date"`
+	EndDate    pgtype.Timestamp `json:"end_date"`
+	LimitCount int32            `json:"limit_count"`
 }
 
-func (q *Queries) GetCustomerLTV(ctx context.Context) ([]GetCustomerLTVRow, error) {
-	rows, err := q.db.Query(ctx, getCustomerLTV)
+type GetCustomerLTVRow struct {
+	ID            pgtype.UUID    `json:"id"`
+	FirstName     *string        `json:"first_name"`
+	LastName      *string        `json:"last_name"`
+	Email         string         `json:"email"`
+	TotalOrders   int64          `json:"total_orders"`
+	LifetimeValue pgtype.Numeric `json:"lifetime_value"`
+}
+
+// Top customers by lifetime value (parameterized date range and limit)
+func (q *Queries) GetCustomerLTV(ctx context.Context, arg GetCustomerLTVParams) ([]GetCustomerLTVRow, error) {
+	rows, err := q.db.Query(ctx, getCustomerLTV, arg.StartDate, arg.EndDate, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -57,24 +69,189 @@ func (q *Queries) GetCustomerLTV(ctx context.Context) ([]GetCustomerLTVRow, erro
 	return items, nil
 }
 
-const getLowStockProducts = `-- name: GetLowStockProducts :many
-SELECT id, name, sku, stock, stock_status 
-FROM products 
-WHERE stock <= low_stock_threshold AND is_active = true
-ORDER BY stock ASC
-LIMIT 50
+const getCustomerRetention = `-- name: GetCustomerRetention :one
+SELECT 
+  COUNT(DISTINCT CASE WHEN order_number = 1 THEN user_id END)::bigint as new_customers,
+  COUNT(DISTINCT CASE WHEN order_number > 1 THEN user_id END)::bigint as returning_customers
+FROM (
+  SELECT 
+    user_id,
+    ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at) as order_number
+  FROM orders
+  WHERE created_at >= $1::timestamp
+    AND created_at <= $2::timestamp
+    AND status NOT IN ('cancelled', 'returned')
+) subquery
 `
 
-type GetLowStockProductsRow struct {
-	ID          pgtype.UUID `json:"id"`
-	Name        string      `json:"name"`
-	Sku         string      `json:"sku"`
-	Stock       int32       `json:"stock"`
-	StockStatus *string     `json:"stock_status"`
+type GetCustomerRetentionParams struct {
+	StartDate pgtype.Timestamp `json:"start_date"`
+	EndDate   pgtype.Timestamp `json:"end_date"`
 }
 
-func (q *Queries) GetLowStockProducts(ctx context.Context) ([]GetLowStockProductsRow, error) {
-	rows, err := q.db.Query(ctx, getLowStockProducts)
+type GetCustomerRetentionRow struct {
+	NewCustomers       int64 `json:"new_customers"`
+	ReturningCustomers int64 `json:"returning_customers"`
+}
+
+// New vs Returning customers (parameterized date range)
+func (q *Queries) GetCustomerRetention(ctx context.Context, arg GetCustomerRetentionParams) (GetCustomerRetentionRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerRetention, arg.StartDate, arg.EndDate)
+	var i GetCustomerRetentionRow
+	err := row.Scan(&i.NewCustomers, &i.ReturningCustomers)
+	return i, err
+}
+
+const getDailySales = `-- name: GetDailySales :many
+SELECT 
+  DATE(created_at) as date,
+  COUNT(*)::int as order_count,
+  COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
+  COALESCE(AVG(total_amount), 0)::numeric as avg_order_value
+FROM orders
+WHERE created_at >= $1::timestamp 
+  AND created_at <= $2::timestamp
+  AND status NOT IN ('cancelled', 'returned')
+GROUP BY DATE(created_at)
+ORDER BY date DESC
+`
+
+type GetDailySalesParams struct {
+	StartDate pgtype.Timestamp `json:"start_date"`
+	EndDate   pgtype.Timestamp `json:"end_date"`
+}
+
+type GetDailySalesRow struct {
+	Date          pgtype.Date    `json:"date"`
+	OrderCount    int32          `json:"order_count"`
+	TotalRevenue  pgtype.Numeric `json:"total_revenue"`
+	AvgOrderValue pgtype.Numeric `json:"avg_order_value"`
+}
+
+// Revenue aggregation by day with parameterized date range
+func (q *Queries) GetDailySales(ctx context.Context, arg GetDailySalesParams) ([]GetDailySalesRow, error) {
+	rows, err := q.db.Query(ctx, getDailySales, arg.StartDate, arg.EndDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDailySalesRow{}
+	for rows.Next() {
+		var i GetDailySalesRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.OrderCount,
+			&i.TotalRevenue,
+			&i.AvgOrderValue,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDeadStockProducts = `-- name: GetDeadStockProducts :many
+SELECT 
+  p.id, p.name, p.slug, p.stock, p.base_price, p.sku, p.media,
+  p.created_at
+FROM products p
+WHERE p.id NOT IN (
+  SELECT DISTINCT oi.product_id 
+  FROM order_items oi
+  JOIN orders o ON oi.order_id = o.id
+  WHERE o.created_at >= NOW() - ($1::int || ' days')::interval
+    AND o.status NOT IN ('cancelled', 'returned')
+)
+AND p.stock > 0
+AND p.is_active = true
+ORDER BY p.stock DESC, p.created_at ASC
+LIMIT $2::int
+`
+
+type GetDeadStockProductsParams struct {
+	Days       int32 `json:"days"`
+	LimitCount int32 `json:"limit_count"`
+}
+
+type GetDeadStockProductsRow struct {
+	ID        pgtype.UUID      `json:"id"`
+	Name      string           `json:"name"`
+	Slug      string           `json:"slug"`
+	Stock     int32            `json:"stock"`
+	BasePrice pgtype.Numeric   `json:"base_price"`
+	Sku       string           `json:"sku"`
+	Media     []byte           `json:"media"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
+// Products with no sales in X days (parameterized)
+func (q *Queries) GetDeadStockProducts(ctx context.Context, arg GetDeadStockProductsParams) ([]GetDeadStockProductsRow, error) {
+	rows, err := q.db.Query(ctx, getDeadStockProducts, arg.Days, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDeadStockProductsRow{}
+	for rows.Next() {
+		var i GetDeadStockProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Stock,
+			&i.BasePrice,
+			&i.Sku,
+			&i.Media,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLowStockProducts = `-- name: GetLowStockProducts :many
+
+SELECT 
+  id, name, slug, stock, base_price, sale_price, sku, media, stock_status
+FROM products
+WHERE stock <= $1::int 
+  AND stock > 0
+  AND is_active = true
+ORDER BY stock ASC
+LIMIT $2::int
+`
+
+type GetLowStockProductsParams struct {
+	Threshold  int32 `json:"threshold"`
+	LimitCount int32 `json:"limit_count"`
+}
+
+type GetLowStockProductsRow struct {
+	ID          pgtype.UUID    `json:"id"`
+	Name        string         `json:"name"`
+	Slug        string         `json:"slug"`
+	Stock       int32          `json:"stock"`
+	BasePrice   pgtype.Numeric `json:"base_price"`
+	SalePrice   pgtype.Numeric `json:"sale_price"`
+	Sku         string         `json:"sku"`
+	Media       []byte         `json:"media"`
+	StockStatus *string        `json:"stock_status"`
+}
+
+// L9 Dashboard/Stats Queries: Fully Parameterized (Zero Hardcoded Values)
+// All date ranges, thresholds, limits controlled by frontend via query params
+// Products below threshold (parameterized - no hardcoded limit)
+func (q *Queries) GetLowStockProducts(ctx context.Context, arg GetLowStockProductsParams) ([]GetLowStockProductsRow, error) {
+	rows, err := q.db.Query(ctx, getLowStockProducts, arg.Threshold, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +262,12 @@ func (q *Queries) GetLowStockProducts(ctx context.Context) ([]GetLowStockProduct
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
-			&i.Sku,
+			&i.Slug,
 			&i.Stock,
+			&i.BasePrice,
+			&i.SalePrice,
+			&i.Sku,
+			&i.Media,
 			&i.StockStatus,
 		); err != nil {
 			return nil, err
@@ -99,27 +280,80 @@ func (q *Queries) GetLowStockProducts(ctx context.Context) ([]GetLowStockProduct
 	return items, nil
 }
 
+const getRevenueKPIs = `-- name: GetRevenueKPIs :one
+SELECT 
+  COUNT(*)::bigint as total_orders,
+  COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
+  COALESCE(AVG(total_amount), 0)::numeric as avg_order_value,
+  COUNT(DISTINCT user_id)::bigint as unique_customers
+FROM orders
+WHERE created_at >= $1::timestamp
+  AND created_at <= $2::timestamp
+  AND status NOT IN ('cancelled', 'returned')
+`
+
+type GetRevenueKPIsParams struct {
+	StartDate pgtype.Timestamp `json:"start_date"`
+	EndDate   pgtype.Timestamp `json:"end_date"`
+}
+
+type GetRevenueKPIsRow struct {
+	TotalOrders     int64          `json:"total_orders"`
+	TotalRevenue    pgtype.Numeric `json:"total_revenue"`
+	AvgOrderValue   pgtype.Numeric `json:"avg_order_value"`
+	UniqueCustomers int64          `json:"unique_customers"`
+}
+
+// Key performance indicators for a parameterized date range
+func (q *Queries) GetRevenueKPIs(ctx context.Context, arg GetRevenueKPIsParams) (GetRevenueKPIsRow, error) {
+	row := q.db.QueryRow(ctx, getRevenueKPIs, arg.StartDate, arg.EndDate)
+	var i GetRevenueKPIsRow
+	err := row.Scan(
+		&i.TotalOrders,
+		&i.TotalRevenue,
+		&i.AvgOrderValue,
+		&i.UniqueCustomers,
+	)
+	return i, err
+}
+
 const getTopSellingProducts = `-- name: GetTopSellingProducts :many
-SELECT p.id, p.name, p.sku, SUM(oi.quantity) as total_sold, SUM(oi.subtotal) as total_revenue
+SELECT 
+  p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media,
+  SUM(oi.quantity)::bigint as total_sold,
+  SUM(oi.subtotal)::numeric as total_revenue
 FROM order_items oi
 JOIN products p ON p.id = oi.product_id
 JOIN orders o ON o.id = oi.order_id
-WHERE o.created_at >= $1
-GROUP BY p.id, p.name, p.sku
+WHERE o.created_at >= $1::timestamp
+  AND o.created_at <= $2::timestamp
+  AND o.status NOT IN ('cancelled', 'returned')
+GROUP BY p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media
 ORDER BY total_sold DESC
-LIMIT 10
+LIMIT $3::int
 `
 
-type GetTopSellingProductsRow struct {
-	ID           pgtype.UUID `json:"id"`
-	Name         string      `json:"name"`
-	Sku          string      `json:"sku"`
-	TotalSold    int64       `json:"total_sold"`
-	TotalRevenue int64       `json:"total_revenue"`
+type GetTopSellingProductsParams struct {
+	StartDate  pgtype.Timestamp `json:"start_date"`
+	EndDate    pgtype.Timestamp `json:"end_date"`
+	LimitCount int32            `json:"limit_count"`
 }
 
-func (q *Queries) GetTopSellingProducts(ctx context.Context, createdAt pgtype.Timestamp) ([]GetTopSellingProductsRow, error) {
-	rows, err := q.db.Query(ctx, getTopSellingProducts, createdAt)
+type GetTopSellingProductsRow struct {
+	ID           pgtype.UUID    `json:"id"`
+	Name         string         `json:"name"`
+	Slug         string         `json:"slug"`
+	Sku          string         `json:"sku"`
+	BasePrice    pgtype.Numeric `json:"base_price"`
+	SalePrice    pgtype.Numeric `json:"sale_price"`
+	Media        []byte         `json:"media"`
+	TotalSold    int64          `json:"total_sold"`
+	TotalRevenue pgtype.Numeric `json:"total_revenue"`
+}
+
+// Best-selling products by quantity (parameterized date range and limit)
+func (q *Queries) GetTopSellingProducts(ctx context.Context, arg GetTopSellingProductsParams) ([]GetTopSellingProductsRow, error) {
+	rows, err := q.db.Query(ctx, getTopSellingProducts, arg.StartDate, arg.EndDate, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +364,11 @@ func (q *Queries) GetTopSellingProducts(ctx context.Context, createdAt pgtype.Ti
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Slug,
 			&i.Sku,
+			&i.BasePrice,
+			&i.SalePrice,
+			&i.Media,
 			&i.TotalSold,
 			&i.TotalRevenue,
 		); err != nil {

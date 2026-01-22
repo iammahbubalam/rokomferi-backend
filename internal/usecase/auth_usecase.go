@@ -182,7 +182,8 @@ func (u *AuthUsecase) UpdateAddress(ctx context.Context, userID string, req doma
 	if req.ID == "" {
 		return nil, fmt.Errorf("address ID required")
 	}
-	// TODO: Verify this address belongs to user? Repo update checks userID=Arg, so safe.
+	// L9: Address ownership is enforced by repository layer via WHERE user_id=? AND id=? clause
+	// This prevents users from updating addresses that don't belong to them
 
 	if err := u.userRepo.UpdateAddress(ctx, &req); err != nil {
 		return nil, err
