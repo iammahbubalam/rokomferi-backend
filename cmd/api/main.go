@@ -207,13 +207,15 @@ func main() {
 	mux.Handle("DELETE /api/v1/wishlist/{productId}", middleware.AuthMiddleware(http.HandlerFunc(wishlistHandler.RemoveFromWishlist)))
 
 	// Admin Stats Routes (Analytics)
-	mux.Handle("GET /api/v1/admin/stats/revenue", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetDailySales)))
-	mux.Handle("GET /api/v1/admin/stats/kpis", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetRevenueKPIs)))
-	mux.Handle("GET /api/v1/admin/stats/inventory/low-stock", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetLowStockProducts)))
-	mux.Handle("GET /api/v1/admin/stats/inventory/dead-stock", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetDeadStockProducts)))
-	mux.Handle("GET /api/v1/admin/stats/products/top-selling", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetTopSellingProducts)))
-	mux.Handle("GET /api/v1/admin/stats/customers/top", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetTopCustomers)))
-	mux.Handle("GET /api/v1/admin/stats/customers/retention", middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetCustomerRetention)))
+	// Admin Stats Routes (Analytics)
+	// Must chain: AuthMiddleware -> AdminMiddleware -> Handler
+	mux.Handle("GET /api/v1/admin/stats/revenue", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetDailySales))))
+	mux.Handle("GET /api/v1/admin/stats/kpis", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetRevenueKPIs))))
+	mux.Handle("GET /api/v1/admin/stats/inventory/low-stock", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetLowStockProducts))))
+	mux.Handle("GET /api/v1/admin/stats/inventory/dead-stock", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetDeadStockProducts))))
+	mux.Handle("GET /api/v1/admin/stats/products/top-selling", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetTopSellingProducts))))
+	mux.Handle("GET /api/v1/admin/stats/customers/top", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetTopCustomers))))
+	mux.Handle("GET /api/v1/admin/stats/customers/retention", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminStatsHandler.GetCustomerRetention))))
 
 	// Health Check
 	healthHandler := func(w http.ResponseWriter, r *http.Request) {
