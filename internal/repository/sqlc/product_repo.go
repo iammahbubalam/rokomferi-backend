@@ -689,6 +689,19 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 		})
 	}
 
+	// Add variants
+	for _, v := range product.Variants {
+		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
+			ProductID: created.ID,
+			Name:      v.Name,
+			Stock:     int32(v.Stock),
+			Sku:       strPtr(v.SKU),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -729,6 +742,22 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 			ProductID:  productUUID,
 			CategoryID: stringToUUID(cat.ID),
 		})
+	}
+
+	// Update variants (Replace Strategy: Delete all, Re-create)
+	if err := r.queries.DeleteVariantsByProductID(ctx, productUUID); err != nil {
+		return err
+	}
+	for _, v := range product.Variants {
+		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
+			ProductID: productUUID,
+			Name:      v.Name,
+			Stock:     int32(v.Stock),
+			Sku:       strPtr(v.SKU),
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
