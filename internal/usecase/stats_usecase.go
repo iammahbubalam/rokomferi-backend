@@ -151,11 +151,16 @@ func (uc *StatsUsecase) GetTopSellingProducts(ctx context.Context, start, end ti
 		return nil, errors.New("limit must be 1-500")
 	}
 
+	// Log start of usecase
+	fmt.Printf("GetTopSellingProductsUsecase: Start - start=%v, end=%v, limit=%d\n", start, end, limit)
+
 	cacheKey := fmt.Sprintf("stats:top_products:%s:%s:%d", start.Format("2006-01-02"), end.Format("2006-01-02"), limit)
 
 	if val, found := uc.cache.Get(cacheKey); found {
+		fmt.Println("GetTopSellingProductsUsecase: Cache Hit")
 		return val.([]sqlc.GetTopSellingProductsRow), nil
 	}
+	fmt.Println("GetTopSellingProductsUsecase: Cache Miss - Querying DB")
 
 	products, err := uc.queries.GetTopSellingProducts(ctx, sqlc.GetTopSellingProductsParams{
 		StartDate:  timeToPgTimestamp(start),
@@ -163,8 +168,11 @@ func (uc *StatsUsecase) GetTopSellingProducts(ctx context.Context, start, end ti
 		LimitCount: limit,
 	})
 	if err != nil {
+		fmt.Printf("GetTopSellingProductsUsecase: DB Error - %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("GetTopSellingProductsUsecase: DB Success - Found %d items\n", len(products))
 
 	uc.cache.Set(cacheKey, products, 30*time.Minute)
 	return products, nil

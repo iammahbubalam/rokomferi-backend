@@ -134,11 +134,19 @@ func (h *AdminStatsHandler) GetTopSellingProducts(w http.ResponseWriter, r *http
 
 	limit := parseInt32WithDefault(r, "limit", 10)
 
+	// Log start of request
+	fmt.Printf("GetTopSellingProductsHandler: Start - start=%v, end=%v, limit=%d\n", start, end, limit)
+
 	products, err := h.statsUC.GetTopSellingProducts(r.Context(), start, end, limit)
 	if err != nil {
+		// Log error
+		fmt.Printf("GetTopSellingProductsHandler: Error - %v\n", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Log success
+	fmt.Printf("GetTopSellingProductsHandler: Success - Found %d products\n", len(products))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(products)

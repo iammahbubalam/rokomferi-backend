@@ -321,7 +321,7 @@ const getTopSellingProducts = `-- name: GetTopSellingProducts :many
 SELECT 
   p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media,
   SUM(oi.quantity)::bigint as total_sold,
-  SUM(oi.subtotal)::numeric as total_revenue
+  SUM(oi.quantity * oi.price)::numeric as total_revenue
 FROM order_items oi
 JOIN products p ON p.id = oi.product_id
 JOIN orders o ON o.id = oi.order_id
