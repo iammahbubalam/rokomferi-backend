@@ -58,19 +58,27 @@ type Product struct {
 	Variants          []Variant    `json:"variants"`
 	Categories        []Category   `json:"categories"`
 	Collections       []Collection `json:"collections"`
+	MetaTitle         string       `json:"metaTitle"`
+	MetaDescription   string       `json:"metaDescription"`
+	Keywords          string       `json:"keywords"`
+	OGImage           string       `json:"ogImage"`
 }
 
 type Collection struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Slug        string    `json:"slug"`
-	Description string    `json:"description"`
-	Image       string    `json:"image"`
-	Story       string    `json:"story"` // The rich text narrative
-	IsActive    bool      `json:"isActive"`
-	Products    []Product `json:"products"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	Slug            string    `json:"slug"`
+	Description     string    `json:"description"`
+	Image           string    `json:"image"`
+	Story           string    `json:"story"` // The rich text narrative
+	IsActive        bool      `json:"isActive"`
+	MetaTitle       string    `json:"metaTitle"`
+	MetaDescription string    `json:"metaDescription"`
+	Keywords        string    `json:"keywords"`
+	OGImage         string    `json:"ogImage"`
+	Products        []Product `json:"products"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type Variant struct {

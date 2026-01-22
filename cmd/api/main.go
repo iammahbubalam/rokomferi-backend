@@ -93,6 +93,10 @@ func main() {
 	searchUC := usecase.NewSearchUsecase(searchRepo, 5*time.Second)
 	searchHandler := v1.NewSearchHandler(searchUC)
 
+	// Sitemap Module
+	sitemapUC := usecase.NewSitemapUsecase(productRepo, cfg.FrontendURL)
+	sitemapHandler := v1.NewSitemapHandler(sitemapUC)
+
 	// --- Routes ---
 
 	// Auth
@@ -115,6 +119,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/content/{key}", contentHandler.GetContent)
 
 	// Catalog (Public)
+	mux.HandleFunc("GET /sitemap.xml", sitemapHandler.ServeHTTP)
 	mux.HandleFunc("GET /api/v1/categories", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/categories/tree", catalogHandler.GetCategories)
 	mux.HandleFunc("GET /api/v1/products", catalogHandler.ListProducts)

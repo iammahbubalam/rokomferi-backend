@@ -15,6 +15,7 @@ type Config struct {
 	GoogleClientID     string
 	JWTSecret          string
 	AllowedOrigin      string
+	FrontendURL        string // Explicit Frontend URL for emails, sitemaps, etc.
 	GoogleTokenInfoURL string
 	GoogleClientSecret string
 	AccessTokenExpiry  time.Duration
@@ -45,6 +46,7 @@ func LoadConfig() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		JWTSecret:          getEnv("JWT_SECRET", "default_secret_CHANGE_ME"),
 		AllowedOrigin:      getEnv("ALLOWED_ORIGIN", "http://localhost:3000"),
+		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:3000"),
 		GoogleTokenInfoURL: getEnv("GOOGLE_TOKEN_INFO_URL", "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=%s"),
 		AccessTokenExpiry:  getDurationEnv("ACCESS_TOKEN_EXPIRY", time.Hour*24),    // Default 24h
 		RefreshTokenExpiry: getDurationEnv("REFRESH_TOKEN_EXPIRY", time.Hour*24*7), // Default 7d

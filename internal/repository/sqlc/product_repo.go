@@ -75,6 +75,10 @@ func sqlcProductToDomain(p sqlc.Product) domain.Product {
 		IsActive:          p.IsActive,
 		CreatedAt:         pgtimeToTime(p.CreatedAt),
 		UpdatedAt:         pgtimeToTime(p.UpdatedAt),
+		MetaTitle:         ptrString(p.MetaTitle),
+		MetaDescription:   ptrString(p.MetaDescription),
+		Keywords:          ptrString(p.MetaKeywords),
+		OGImage:           ptrString(p.OgImage),
 	}
 
 	// Handle Media (JSONB)
@@ -155,15 +159,19 @@ func sqlcCategoryToDomain(c sqlc.Category) domain.Category {
 
 func sqlcCollectionToDomain(c sqlc.Collection) domain.Collection {
 	return domain.Collection{
-		ID:          uuidToString(c.ID),
-		Title:       c.Title,
-		Slug:        c.Slug,
-		Description: ptrString(c.Description),
-		Image:       ptrString(c.Image),
-		Story:       ptrString(c.Story),
-		IsActive:    c.IsActive,
-		CreatedAt:   pgtimeToTime(c.CreatedAt),
-		UpdatedAt:   pgtimeToTime(c.UpdatedAt),
+		ID:              uuidToString(c.ID),
+		Title:           c.Title,
+		Slug:            c.Slug,
+		Description:     ptrString(c.Description),
+		Image:           ptrString(c.Image),
+		Story:           ptrString(c.Story),
+		IsActive:        c.IsActive,
+		CreatedAt:       pgtimeToTime(c.CreatedAt),
+		UpdatedAt:       pgtimeToTime(c.UpdatedAt),
+		MetaTitle:       ptrString(c.MetaTitle),
+		MetaDescription: ptrString(c.MetaDescription),
+		Keywords:        ptrString(c.MetaKeywords),
+		OGImage:         ptrString(c.OgImage),
 	}
 }
 
@@ -396,12 +404,16 @@ func (r *productRepository) GetCollectionBySlug(ctx context.Context, slug string
 
 func (r *productRepository) CreateCollection(ctx context.Context, collection *domain.Collection) error {
 	created, err := r.queries.CreateCollection(ctx, sqlc.CreateCollectionParams{
-		Title:       collection.Title,
-		Slug:        collection.Slug,
-		Description: strPtr(collection.Description),
-		Image:       strPtr(collection.Image),
-		Story:       strPtr(collection.Story),
-		IsActive:    collection.IsActive,
+		Title:           collection.Title,
+		Slug:            collection.Slug,
+		Description:     strPtr(collection.Description),
+		Image:           strPtr(collection.Image),
+		Story:           strPtr(collection.Story),
+		IsActive:        collection.IsActive,
+		MetaTitle:       strPtr(collection.MetaTitle),
+		MetaDescription: strPtr(collection.MetaDescription),
+		MetaKeywords:    strPtr(collection.Keywords),
+		OgImage:         strPtr(collection.OGImage),
 	})
 	if err != nil {
 		return err
@@ -414,13 +426,17 @@ func (r *productRepository) CreateCollection(ctx context.Context, collection *do
 
 func (r *productRepository) UpdateCollection(ctx context.Context, collection *domain.Collection) error {
 	_, err := r.queries.UpdateCollection(ctx, sqlc.UpdateCollectionParams{
-		ID:          stringToUUID(collection.ID),
-		Title:       collection.Title,
-		Slug:        collection.Slug,
-		Description: strPtr(collection.Description),
-		Image:       strPtr(collection.Image),
-		Story:       strPtr(collection.Story),
-		IsActive:    collection.IsActive,
+		ID:              stringToUUID(collection.ID),
+		Title:           collection.Title,
+		Slug:            collection.Slug,
+		Description:     strPtr(collection.Description),
+		Image:           strPtr(collection.Image),
+		Story:           strPtr(collection.Story),
+		IsActive:        collection.IsActive,
+		MetaTitle:       strPtr(collection.MetaTitle),
+		MetaDescription: strPtr(collection.MetaDescription),
+		MetaKeywords:    strPtr(collection.Keywords),
+		OgImage:         strPtr(collection.OGImage),
 	})
 	return err
 }
@@ -651,6 +667,10 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 		Media:             mediaBytes,
 		Attributes:        attrsBytes,
 		Specifications:    specsBytes,
+		MetaTitle:         strPtr(product.MetaTitle),
+		MetaDescription:   strPtr(product.MetaDescription),
+		MetaKeywords:      strPtr(product.Keywords),
+		OgImage:           strPtr(product.OGImage),
 	})
 	if err != nil {
 		return err
@@ -691,6 +711,10 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 		Media:             mediaBytes,
 		Attributes:        attrsBytes,
 		Specifications:    specsBytes,
+		MetaTitle:         strPtr(product.MetaTitle),
+		MetaDescription:   strPtr(product.MetaDescription),
+		MetaKeywords:      strPtr(product.Keywords),
+		OgImage:           strPtr(product.OGImage),
 	})
 	if err != nil {
 		return err
