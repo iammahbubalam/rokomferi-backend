@@ -27,12 +27,37 @@ func (q *Queries) AddProductCategory(ctx context.Context, arg AddProductCategory
 	return err
 }
 
+const addProductCollection = `-- name: AddProductCollection :exec
+INSERT INTO product_collections (product_id, collection_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddProductCollectionParams struct {
+	ProductID    pgtype.UUID `json:"product_id"`
+	CollectionID pgtype.UUID `json:"collection_id"`
+}
+
+func (q *Queries) AddProductCollection(ctx context.Context, arg AddProductCollectionParams) error {
+	_, err := q.db.Exec(ctx, addProductCollection, arg.ProductID, arg.CollectionID)
+	return err
+}
+
 const clearProductCategories = `-- name: ClearProductCategories :exec
 DELETE FROM product_categories WHERE product_id = $1
 `
 
 func (q *Queries) ClearProductCategories(ctx context.Context, productID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, clearProductCategories, productID)
+	return err
+}
+
+const clearProductCollections = `-- name: ClearProductCollections :exec
+DELETE FROM product_collections WHERE product_id = $1
+`
+
+func (q *Queries) ClearProductCollections(ctx context.Context, productID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearProductCollections, productID)
 	return err
 }
 
@@ -58,16 +83,17 @@ const countProductsWithCategoryFilter = `-- name: CountProductsWithCategoryFilte
 SELECT COUNT(DISTINCT p.id) FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
-WHERE c.slug = $1 AND ($2::boolean IS NULL OR p.is_active = $2)
+WHERE c.slug = $1 
+AND ($2::boolean IS NULL OR p.is_active = $2)
 `
 
 type CountProductsWithCategoryFilterParams struct {
-	Slug    string `json:"slug"`
-	Column2 bool   `json:"column_2"`
+	Slug     string `json:"slug"`
+	IsActive *bool  `json:"is_active"`
 }
 
 func (q *Queries) CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countProductsWithCategoryFilter, arg.Slug, arg.Column2)
+	row := q.db.QueryRow(ctx, countProductsWithCategoryFilter, arg.Slug, arg.IsActive)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -194,6 +220,116 @@ func (q *Queries) GetCategoryIDsForProduct(ctx context.Context, productID pgtype
 			return nil, err
 		}
 		items = append(items, category_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCategoryIDsForProducts = `-- name: GetCategoryIDsForProducts :many
+SELECT product_id, category_id FROM product_categories WHERE product_id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetCategoryIDsForProducts(ctx context.Context, dollar_1 []pgtype.UUID) ([]ProductCategory, error) {
+	rows, err := q.db.Query(ctx, getCategoryIDsForProducts, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProductCategory{}
+	for rows.Next() {
+		var i ProductCategory
+		if err := rows.Scan(&i.ProductID, &i.CategoryID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCollectionIDsForProduct = `-- name: GetCollectionIDsForProduct :many
+SELECT collection_id FROM product_collections WHERE product_id = $1
+`
+
+func (q *Queries) GetCollectionIDsForProduct(ctx context.Context, productID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, getCollectionIDsForProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var collection_id pgtype.UUID
+		if err := rows.Scan(&collection_id); err != nil {
+			return nil, err
+		}
+		items = append(items, collection_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCollectionIDsForProducts = `-- name: GetCollectionIDsForProducts :many
+SELECT product_id, collection_id FROM product_collections WHERE product_id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetCollectionIDsForProducts(ctx context.Context, dollar_1 []pgtype.UUID) ([]ProductCollection, error) {
+	rows, err := q.db.Query(ctx, getCollectionIDsForProducts, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProductCollection{}
+	for rows.Next() {
+		var i ProductCollection
+		if err := rows.Scan(&i.ProductID, &i.CollectionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCollectionsByIDs = `-- name: GetCollectionsByIDs :many
+SELECT id, title, slug, description, image, story, is_active, created_at, updated_at, meta_title, meta_description, meta_keywords, og_image FROM collections WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetCollectionsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Collection, error) {
+	rows, err := q.db.Query(ctx, getCollectionsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Collection{}
+	for rows.Next() {
+		var i Collection
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.Image,
+			&i.Story,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MetaTitle,
+			&i.MetaDescription,
+			&i.MetaKeywords,
+			&i.OgImage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -435,24 +571,25 @@ const getProductsWithCategoryFilter = `-- name: GetProductsWithCategoryFilter :m
 SELECT DISTINCT p.id, p.name, p.slug, p.sku, p.description, p.base_price, p.sale_price, p.stock, p.stock_status, p.low_stock_threshold, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
-WHERE c.slug = $1 AND ($2::boolean IS NULL OR p.is_active = $2)
+WHERE c.slug = $1 
+AND ($2::boolean IS NULL OR p.is_active = $2)
 ORDER BY p.created_at DESC
-LIMIT $3 OFFSET $4
+LIMIT $4 OFFSET $3
 `
 
 type GetProductsWithCategoryFilterParams struct {
-	Slug    string `json:"slug"`
-	Column2 bool   `json:"column_2"`
-	Limit   int32  `json:"limit"`
-	Offset  int32  `json:"offset"`
+	Slug     string `json:"slug"`
+	IsActive *bool  `json:"is_active"`
+	Offset   int32  `json:"offset"`
+	Limit    int32  `json:"limit"`
 }
 
 func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProductsWithCategoryFilterParams) ([]Product, error) {
 	rows, err := q.db.Query(ctx, getProductsWithCategoryFilter,
 		arg.Slug,
-		arg.Column2,
-		arg.Limit,
+		arg.IsActive,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -576,6 +713,20 @@ type RemoveProductCategoryParams struct {
 
 func (q *Queries) RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error {
 	_, err := q.db.Exec(ctx, removeProductCategory, arg.ProductID, arg.CategoryID)
+	return err
+}
+
+const removeProductCollection = `-- name: RemoveProductCollection :exec
+DELETE FROM product_collections WHERE product_id = $1 AND collection_id = $2
+`
+
+type RemoveProductCollectionParams struct {
+	ProductID    pgtype.UUID `json:"product_id"`
+	CollectionID pgtype.UUID `json:"collection_id"`
+}
+
+func (q *Queries) RemoveProductCollection(ctx context.Context, arg RemoveProductCollectionParams) error {
+	_, err := q.db.Exec(ctx, removeProductCollection, arg.ProductID, arg.CollectionID)
 	return err
 }
 

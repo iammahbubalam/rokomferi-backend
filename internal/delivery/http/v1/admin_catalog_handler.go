@@ -32,7 +32,8 @@ func (h *AdminCatalogHandler) GetAllCategories(w http.ResponseWriter, r *http.Re
 
 type productReq struct {
 	domain.Product
-	CategoryIDs []string `json:"categoryIds"`
+	CategoryIDs   []string `json:"categoryIds"`
+	CollectionIDs []string `json:"collectionIds"`
 }
 
 func (h *AdminCatalogHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +49,14 @@ func (h *AdminCatalogHandler) CreateProduct(w http.ResponseWriter, r *http.Reque
 		product.Categories = make([]domain.Category, len(req.CategoryIDs))
 		for i, id := range req.CategoryIDs {
 			product.Categories[i] = domain.Category{ID: id}
+		}
+	}
+
+	// Map CollectionIDs to Collections
+	if len(req.CollectionIDs) > 0 {
+		product.Collections = make([]domain.Collection, len(req.CollectionIDs))
+		for i, id := range req.CollectionIDs {
+			product.Collections[i] = domain.Collection{ID: id}
 		}
 	}
 
@@ -95,16 +104,19 @@ func (h *AdminCatalogHandler) ListProducts(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Filter Status (isActive)
-	// Expect "true", "false", "all"
+	// Expect "true", "false", "all" (or empty)
 	status := r.URL.Query().Get("isActive")
-	if status == "true" {
-		val := true
-		filter.IsActive = &val
-	} else if status == "false" {
-		val := false
-		filter.IsActive = &val
+	switch status {
+	case "true":
+		t := true
+		filter.IsActive = &t
+	case "false":
+		f := false
+		filter.IsActive = &f
+	default:
+		// Explicitly nil for "all" or empty
+		filter.IsActive = nil
 	}
-	// if "all" or empty, IsActive remains nil
 
 	products, total, err := h.catalogUC.ListProducts(r.Context(), filter)
 	if err != nil {
@@ -146,6 +158,17 @@ func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Reque
 	} else if req.CategoryIDs != nil {
 		// Explicit empty array clears categories
 		product.Categories = []domain.Category{}
+	}
+
+	// Map CollectionIDs to Collections
+	if len(req.CollectionIDs) > 0 {
+		product.Collections = make([]domain.Collection, len(req.CollectionIDs))
+		for i, id := range req.CollectionIDs {
+			product.Collections[i] = domain.Collection{ID: id}
+		}
+	} else if req.CollectionIDs != nil {
+		// Explicit empty array clears collections
+		product.Collections = []domain.Collection{}
 	}
 
 	if err := h.catalogUC.UpdateProduct(r.Context(), &product); err != nil {

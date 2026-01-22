@@ -57,15 +57,17 @@ UPDATE products SET stock = stock + $2 WHERE id = $1 AND stock + $2 >= 0;
 SELECT DISTINCT p.* FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
-WHERE c.slug = $1 AND ($2::boolean IS NULL OR p.is_active = $2)
+WHERE c.slug = sqlc.arg('slug') 
+AND (sqlc.narg('is_active')::boolean IS NULL OR p.is_active = sqlc.narg('is_active'))
 ORDER BY p.created_at DESC
-LIMIT $3 OFFSET $4;
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
 -- name: CountProductsWithCategoryFilter :one
 SELECT COUNT(DISTINCT p.id) FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
-WHERE c.slug = $1 AND ($2::boolean IS NULL OR p.is_active = $2);
+WHERE c.slug = sqlc.arg('slug') 
+AND (sqlc.narg('is_active')::boolean IS NULL OR p.is_active = sqlc.narg('is_active'));
 
 
 
@@ -94,3 +96,26 @@ SELECT p.* FROM products p
 JOIN product_collections pc ON pc.product_id = p.id
 WHERE pc.collection_id = $1 AND p.is_active = true
 ORDER BY p.created_at DESC;
+
+-- name: AddProductCollection :exec
+INSERT INTO product_collections (product_id, collection_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
+
+-- name: RemoveProductCollection :exec
+DELETE FROM product_collections WHERE product_id = $1 AND collection_id = $2;
+
+-- name: ClearProductCollections :exec
+DELETE FROM product_collections WHERE product_id = $1;
+
+-- name: GetCollectionIDsForProduct :many
+SELECT collection_id FROM product_collections WHERE product_id = $1;
+
+-- name: GetCollectionsByIDs :many
+SELECT * FROM collections WHERE id = ANY($1::uuid[]);
+
+-- name: GetCategoryIDsForProducts :many
+SELECT product_id, category_id FROM product_categories WHERE product_id = ANY($1::uuid[]);
+
+-- name: GetCollectionIDsForProducts :many
+SELECT product_id, collection_id FROM product_collections WHERE product_id = ANY($1::uuid[]);

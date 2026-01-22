@@ -12,12 +12,14 @@ import (
 
 type Querier interface {
 	AddProductCategory(ctx context.Context, arg AddProductCategoryParams) error
+	AddProductCollection(ctx context.Context, arg AddProductCollectionParams) error
 	AddProductToCollection(ctx context.Context, arg AddProductToCollectionParams) error
 	AddWishlistItem(ctx context.Context, arg AddWishlistItemParams) error
 	AtomicRemoveCartItem(ctx context.Context, arg AtomicRemoveCartItemParams) error
 	CheckItemInWishlist(ctx context.Context, arg CheckItemInWishlistParams) (bool, error)
 	ClearCart(ctx context.Context, cartID pgtype.UUID) error
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
+	ClearProductCollections(ctx context.Context, productID pgtype.UUID) error
 	CountCoupons(ctx context.Context) (int64, error)
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
 	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
@@ -61,9 +63,13 @@ type Querier interface {
 	GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category, error)
 	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
 	GetCategoryIDsForProduct(ctx context.Context, productID pgtype.UUID) ([]pgtype.UUID, error)
+	GetCategoryIDsForProducts(ctx context.Context, dollar_1 []pgtype.UUID) ([]ProductCategory, error)
 	GetChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
 	GetCollectionByID(ctx context.Context, id pgtype.UUID) (Collection, error)
 	GetCollectionBySlug(ctx context.Context, slug string) (Collection, error)
+	GetCollectionIDsForProduct(ctx context.Context, productID pgtype.UUID) ([]pgtype.UUID, error)
+	GetCollectionIDsForProducts(ctx context.Context, dollar_1 []pgtype.UUID) ([]ProductCollection, error)
+	GetCollectionsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Collection, error)
 	GetContentBlockByKey(ctx context.Context, sectionKey string) (ContentBlock, error)
 	GetCouponByCode(ctx context.Context, code string) (Coupon, error)
 	GetCouponByID(ctx context.Context, id pgtype.UUID) (Coupon, error)
@@ -118,6 +124,7 @@ type Querier interface {
 	ListProductSlugs(ctx context.Context) ([]ListProductSlugsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
+	RemoveProductCollection(ctx context.Context, arg RemoveProductCollectionParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error
 	RemoveWishlistItem(ctx context.Context, arg RemoveWishlistItemParams) error
 	RevokeRefreshToken(ctx context.Context, token string) error

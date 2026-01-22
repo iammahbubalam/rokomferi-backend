@@ -499,38 +499,165 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 		limit = 100
 	}
 
-	// Default to true if nil (show active products by default)
-	var isActive *bool
-	trueVal := true
-	if filter.IsActive != nil {
-		isActive = filter.IsActive
+	// Default to true if nil (show active products by default) IS REMOVED
+	// We want to allow nil to mean "ALL"
+	// The caller (Public API) should ensure IsActive is set to True if needed.
+	// Admin API will pass nil for All, True for Active, False for Inactive.
+
+	var products []sqlc.Product
+	var count int64
+	var err error
+
+	if filter.CategorySlug != "" {
+		products, err = r.queries.GetProductsWithCategoryFilter(ctx, sqlc.GetProductsWithCategoryFilterParams{
+			Slug:     filter.CategorySlug,
+			IsActive: filter.IsActive,
+			Limit:    limit,
+			Offset:   int32(filter.Offset),
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+
+		count, err = r.queries.CountProductsWithCategoryFilter(ctx, sqlc.CountProductsWithCategoryFilterParams{
+			Slug:     filter.CategorySlug,
+			IsActive: filter.IsActive,
+		})
+		if err != nil {
+			return nil, 0, err
+		}
 	} else {
-		isActive = &trueVal
-	}
+		products, err = r.queries.GetProducts(ctx, sqlc.GetProductsParams{
+			IsActive:   filter.IsActive,
+			IsFeatured: filter.IsFeatured,
+			Limit:      limit,
+			Offset:     int32(filter.Offset),
+		})
+		if err != nil {
+			return nil, 0, err
+		}
 
-	products, err := r.queries.GetProducts(ctx, sqlc.GetProductsParams{
-		IsActive:   isActive,
-		IsFeatured: filter.IsFeatured,
-		Limit:      limit,
-		Offset:     int32(filter.Offset),
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-
-	count, err := r.queries.CountProducts(ctx, sqlc.CountProductsParams{
-		IsActive:   isActive,
-		IsFeatured: filter.IsFeatured,
-	})
-	if err != nil {
-		return nil, 0, err
+		count, err = r.queries.CountProducts(ctx, sqlc.CountProductsParams{
+			IsActive:   filter.IsActive,
+			IsFeatured: filter.IsFeatured,
+		})
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	result := make([]domain.Product, len(products))
-	for i, p := range products {
-		result[i] = sqlcProductToDomain(p)
-	}
+	if len(products) > 0 {
+		productIDs := make([]pgtype.UUID, len(products))
+		for i, p := range products {
+			productIDs[i] = p.ID
+			result[i] = sqlcProductToDomain(p)
+		}
 
+		// 1. Batch Fetch Categories
+		catRows, err := r.queries.GetCategoryIDsForProducts(ctx, productIDs)
+		if err == nil && len(catRows) > 0 {
+			// Collect all Unique Category IDs
+			catIDSet := make(map[pgtype.UUID]struct{})
+			for _, row := range catRows {
+				if row.CategoryID.Valid {
+					catIDSet[row.CategoryID] = struct{}{}
+				}
+			}
+			uniqueCatIDs := make([]pgtype.UUID, 0, len(catIDSet))
+			for id := range catIDSet {
+				uniqueCatIDs = append(uniqueCatIDs, id)
+			}
+
+			// Fetch Category Details
+			cats, err := r.queries.GetCategoriesByIDs(ctx, uniqueCatIDs)
+			if err == nil {
+				// Map ID -> Domain Category
+				catMap := make(map[string]domain.Category)
+				for _, c := range cats {
+					catMap[uuidToString(c.ID)] = sqlcCategoryToDomain(c)
+				}
+
+				// Map ProductID -> []Category
+				prodCatMap := make(map[string][]domain.Category)
+				for _, row := range catRows {
+					if row.CategoryID.Valid {
+						pid := uuidToString(row.ProductID)
+						cid := uuidToString(row.CategoryID)
+						if c, ok := catMap[cid]; ok {
+							prodCatMap[pid] = append(prodCatMap[pid], c)
+						}
+					}
+				}
+
+				// Assign to Result
+				for i := range result {
+					if cs, ok := prodCatMap[result[i].ID]; ok {
+						result[i].Categories = cs
+					} else {
+						result[i].Categories = []domain.Category{}
+					}
+				}
+			}
+		} else {
+			// Initialize empty to avoid nil
+			for i := range result {
+				result[i].Categories = []domain.Category{}
+			}
+		}
+
+		// 2. Batch Fetch Collections
+		colRows, err := r.queries.GetCollectionIDsForProducts(ctx, productIDs)
+		if err == nil && len(colRows) > 0 {
+			// Collect all Unique Collection IDs
+			colIDSet := make(map[pgtype.UUID]struct{})
+			for _, row := range colRows {
+				if row.CollectionID.Valid {
+					colIDSet[row.CollectionID] = struct{}{}
+				}
+			}
+			uniqueColIDs := make([]pgtype.UUID, 0, len(colIDSet))
+			for id := range colIDSet {
+				uniqueColIDs = append(uniqueColIDs, id)
+			}
+
+			// Fetch Collection Details
+			cols, err := r.queries.GetCollectionsByIDs(ctx, uniqueColIDs)
+			if err == nil {
+				// Map ID -> Domain Collection
+				colMap := make(map[string]domain.Collection)
+				for _, c := range cols {
+					colMap[uuidToString(c.ID)] = sqlcCollectionToDomain(c)
+				}
+
+				// Map ProductID -> []Collection
+				prodColMap := make(map[string][]domain.Collection)
+				for _, row := range colRows {
+					if row.CollectionID.Valid {
+						pid := uuidToString(row.ProductID)
+						cid := uuidToString(row.CollectionID)
+						if c, ok := colMap[cid]; ok {
+							prodColMap[pid] = append(prodColMap[pid], c)
+						}
+					}
+				}
+
+				// Assign to Result
+				for i := range result {
+					if cs, ok := prodColMap[result[i].ID]; ok {
+						result[i].Collections = cs
+					} else {
+						result[i].Collections = []domain.Collection{}
+					}
+				}
+			}
+		} else {
+			// Initialize empty
+			for i := range result {
+				result[i].Collections = []domain.Collection{}
+			}
+		}
+	}
 	return result, count, nil
 }
 
@@ -551,20 +678,33 @@ func (r *productRepository) GetProductBySlug(ctx context.Context, slug string) (
 	// Load categories (Optimized Batch Fetch)
 	catIDs, _ := r.queries.GetCategoryIDsForProduct(ctx, p.ID)
 	if len(catIDs) > 0 {
-		// Fetch all categories in 1 query
 		cats, err := r.queries.GetCategoriesByIDs(ctx, catIDs)
-		if err != nil {
-			// Log error but don't fail, return empty categories
-			// or we could return error. For now, best effort.
-			return nil, err
-		}
-
-		prod.Categories = make([]domain.Category, len(cats))
-		for i, c := range cats {
-			prod.Categories[i] = sqlcCategoryToDomain(c)
+		if err == nil {
+			prod.Categories = make([]domain.Category, len(cats))
+			for i, c := range cats {
+				prod.Categories[i] = sqlcCategoryToDomain(c)
+			}
+		} else {
+			prod.Categories = []domain.Category{}
 		}
 	} else {
 		prod.Categories = []domain.Category{}
+	}
+
+	// Load Collections (Optimized Batch Fetch)
+	colIDs, _ := r.queries.GetCollectionIDsForProduct(ctx, p.ID)
+	if len(colIDs) > 0 {
+		cols, err := r.queries.GetCollectionsByIDs(ctx, colIDs)
+		if err == nil {
+			prod.Collections = make([]domain.Collection, len(cols))
+			for i, c := range cols {
+				prod.Collections[i] = sqlcCollectionToDomain(c)
+			}
+		} else {
+			prod.Collections = []domain.Collection{}
+		}
+	} else {
+		prod.Collections = []domain.Collection{}
 	}
 
 	return &prod, nil
@@ -584,19 +724,36 @@ func (r *productRepository) GetProductByID(ctx context.Context, id string) (*dom
 		prod.Variants[i] = sqlcVariantToDomain(v)
 	}
 
-	// Load categories (Optimized Batch Fetch)
+	// Load categories
 	catIDs, _ := r.queries.GetCategoryIDsForProduct(ctx, p.ID)
 	if len(catIDs) > 0 {
 		cats, err := r.queries.GetCategoriesByIDs(ctx, catIDs)
-		if err != nil {
-			return nil, err
-		}
-		prod.Categories = make([]domain.Category, len(cats))
-		for i, c := range cats {
-			prod.Categories[i] = sqlcCategoryToDomain(c)
+		if err == nil {
+			prod.Categories = make([]domain.Category, len(cats))
+			for i, c := range cats {
+				prod.Categories[i] = sqlcCategoryToDomain(c)
+			}
+		} else {
+			prod.Categories = []domain.Category{}
 		}
 	} else {
 		prod.Categories = []domain.Category{}
+	}
+
+	// Load Collections
+	colIDs, _ := r.queries.GetCollectionIDsForProduct(ctx, p.ID)
+	if len(colIDs) > 0 {
+		cols, err := r.queries.GetCollectionsByIDs(ctx, colIDs)
+		if err == nil {
+			prod.Collections = make([]domain.Collection, len(cols))
+			for i, c := range cols {
+				prod.Collections[i] = sqlcCollectionToDomain(c)
+			}
+		} else {
+			prod.Collections = []domain.Collection{}
+		}
+	} else {
+		prod.Collections = []domain.Collection{}
 	}
 
 	return &prod, nil
@@ -723,6 +880,14 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 		})
 	}
 
+	// Add collections
+	for _, col := range product.Collections {
+		r.queries.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
+			ProductID:    created.ID,
+			CollectionID: stringToUUID(col.ID),
+		})
+	}
+
 	// Add variants
 	for _, v := range product.Variants {
 		vAttributes, _ := json.Marshal(v.Attributes)
@@ -791,6 +956,15 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 		r.queries.AddProductCategory(ctx, sqlc.AddProductCategoryParams{
 			ProductID:  productUUID,
 			CategoryID: stringToUUID(cat.ID),
+		})
+	}
+
+	// Update collections
+	r.queries.ClearProductCollections(ctx, productUUID)
+	for _, col := range product.Collections {
+		r.queries.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
+			ProductID:    productUUID,
+			CollectionID: stringToUUID(col.ID),
 		})
 	}
 
