@@ -31,7 +31,7 @@ func (q *Queries) CountSearchProducts(ctx context.Context, arg CountSearchProduc
 }
 
 const searchProducts = `-- name: SearchProducts :many
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image,
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info,
        ts_rank(search_vector, websearch_to_tsquery('english', $3)) as rank
 FROM products
 WHERE search_vector @@ websearch_to_tsquery('english', $3)
@@ -70,6 +70,9 @@ type SearchProductsRow struct {
 	MetaDescription   *string          `json:"meta_description"`
 	MetaKeywords      *string          `json:"meta_keywords"`
 	OgImage           *string          `json:"og_image"`
+	Brand             *string          `json:"brand"`
+	Tags              []string         `json:"tags"`
+	WarrantyInfo      []byte           `json:"warranty_info"`
 	Rank              float32          `json:"rank"`
 }
 
@@ -110,6 +113,9 @@ func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) 
 			&i.MetaDescription,
 			&i.MetaKeywords,
 			&i.OgImage,
+			&i.Brand,
+			&i.Tags,
+			&i.WarrantyInfo,
 			&i.Rank,
 		); err != nil {
 			return nil, err

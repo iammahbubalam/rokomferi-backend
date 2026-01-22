@@ -80,6 +80,8 @@ func sqlcProductToDomain(p sqlc.Product) domain.Product {
 		MetaDescription:   ptrString(p.MetaDescription),
 		Keywords:          ptrString(p.MetaKeywords),
 		OGImage:           ptrString(p.OgImage),
+		Brand:             ptrString(p.Brand),
+		Tags:              p.Tags,
 	}
 
 	// Handle Media (JSONB)
@@ -100,6 +102,13 @@ func sqlcProductToDomain(p sqlc.Product) domain.Product {
 		var specs domain.JSONB
 		json.Unmarshal(p.Specifications, &specs)
 		prod.Specs = specs
+	}
+
+	// Handle Warranty Info
+	if len(p.WarrantyInfo) > 0 {
+		var warranty domain.JSONB
+		json.Unmarshal(p.WarrantyInfo, &warranty)
+		prod.WarrantyInfo = warranty
 	}
 
 	return prod
@@ -177,13 +186,32 @@ func sqlcCollectionToDomain(c sqlc.Collection) domain.Collection {
 }
 
 func sqlcVariantToDomain(v sqlc.Variant) domain.Variant {
-	return domain.Variant{
+	variant := domain.Variant{
 		ID:        uuidToString(v.ID),
 		ProductID: uuidToString(v.ProductID),
 		Name:      v.Name,
 		Stock:     int(v.Stock),
 		SKU:       ptrString(v.Sku),
+		Price:     numericToFloat64Ptr(v.Price),
+		SalePrice: numericToFloat64Ptr(v.SalePrice),
+		Images:    v.Images,
+		Weight:    numericToFloat64Ptr(v.Weight),
+		Barcode:   ptrString(v.Barcode),
 	}
+
+	if len(v.Attributes) > 0 {
+		var attrs domain.JSONB
+		json.Unmarshal(v.Attributes, &attrs)
+		variant.Attributes = attrs
+	}
+
+	if len(v.Dimensions) > 0 {
+		var dims domain.JSONB
+		json.Unmarshal(v.Dimensions, &dims)
+		variant.Dimensions = dims
+	}
+
+	return variant
 }
 
 func sqlcInventoryLogToDomain(l sqlc.InventoryLog) domain.InventoryLog {
@@ -653,6 +681,9 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	attrsBytes, _ := json.Marshal(product.Attributes)
 	specsBytes, _ := json.Marshal(product.Specs)
 
+	// Marshal additional JSONB fields
+	warrantyBytes, _ := json.Marshal(product.WarrantyInfo)
+
 	created, err := r.queries.CreateProduct(ctx, sqlc.CreateProductParams{
 		Name:              product.Name,
 		Slug:              product.Slug,
@@ -672,6 +703,9 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 		MetaDescription:   strPtr(product.MetaDescription),
 		MetaKeywords:      strPtr(product.Keywords),
 		OgImage:           strPtr(product.OGImage),
+		Brand:             strPtr(product.Brand),
+		Tags:              product.Tags,
+		WarrantyInfo:      warrantyBytes,
 	})
 	if err != nil {
 		return err
@@ -691,11 +725,21 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 
 	// Add variants
 	for _, v := range product.Variants {
+		vAttributes, _ := json.Marshal(v.Attributes)
+		vDimensions, _ := json.Marshal(v.Dimensions)
+
 		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
-			ProductID: created.ID,
-			Name:      v.Name,
-			Stock:     int32(v.Stock),
-			Sku:       strPtr(v.SKU),
+			ProductID:  created.ID,
+			Name:       v.Name,
+			Stock:      int32(v.Stock),
+			Sku:        strPtr(v.SKU),
+			Attributes: vAttributes,
+			Price:      float64PtrToNumeric(v.Price),
+			SalePrice:  float64PtrToNumeric(v.SalePrice),
+			Images:     v.Images,
+			Weight:     float64PtrToNumeric(v.Weight),
+			Dimensions: vDimensions,
+			Barcode:    strPtr(v.Barcode),
 		})
 		if err != nil {
 			return err
@@ -709,6 +753,9 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 	mediaBytes := mapImagesToMedia(product)
 	attrsBytes, _ := json.Marshal(product.Attributes)
 	specsBytes, _ := json.Marshal(product.Specs)
+
+	// Marshal additional JSONB fields
+	warrantyBytes, _ := json.Marshal(product.WarrantyInfo)
 
 	_, err := r.queries.UpdateProduct(ctx, sqlc.UpdateProductParams{
 		ID:                stringToUUID(product.ID),
@@ -729,6 +776,9 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 		MetaDescription:   strPtr(product.MetaDescription),
 		MetaKeywords:      strPtr(product.Keywords),
 		OgImage:           strPtr(product.OGImage),
+		Brand:             strPtr(product.Brand),
+		Tags:              product.Tags,
+		WarrantyInfo:      warrantyBytes,
 	})
 	if err != nil {
 		return err
@@ -749,11 +799,21 @@ func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.P
 		return err
 	}
 	for _, v := range product.Variants {
+		vAttributes, _ := json.Marshal(v.Attributes)
+		vDimensions, _ := json.Marshal(v.Dimensions)
+
 		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
-			ProductID: productUUID,
-			Name:      v.Name,
-			Stock:     int32(v.Stock),
-			Sku:       strPtr(v.SKU),
+			ProductID:  productUUID,
+			Name:       v.Name,
+			Stock:      int32(v.Stock),
+			Sku:        strPtr(v.SKU),
+			Attributes: vAttributes,
+			Price:      float64PtrToNumeric(v.Price),
+			SalePrice:  float64PtrToNumeric(v.SalePrice),
+			Images:     v.Images,
+			Weight:     float64PtrToNumeric(v.Weight),
+			Dimensions: vDimensions,
+			Barcode:    strPtr(v.Barcode),
 		})
 		if err != nil {
 			return err

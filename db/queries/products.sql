@@ -20,16 +20,27 @@ SELECT * FROM products WHERE id = $1;
 SELECT * FROM products WHERE sku = $1;
 
 -- name: CreateProduct :one
-INSERT INTO products (name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, meta_title, meta_description, meta_keywords, og_image)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-RETURNING *;
+INSERT INTO products (
+    name, slug, sku, description, base_price, sale_price, 
+    stock, stock_status, low_stock_threshold, is_featured, is_active, 
+    media, attributes, specifications, 
+    meta_title, meta_description, meta_keywords, og_image,
+    brand, tags, warranty_info
+) VALUES (
+    $1, $2, $3, $4, $5, $6, 
+    $7, $8, $9, $10, $11, 
+    $12, $13, $14, 
+    $15, $16, $17, $18,
+    $19, $20, $21
+) RETURNING *;
 
 -- name: UpdateProduct :one
 UPDATE products
 SET name = $2, slug = $3, description = $4, base_price = $5, sale_price = $6, 
     stock = $7, stock_status = $8, low_stock_threshold = $9, is_featured = $10, 
     is_active = $11, media = $12, attributes = $13, specifications = $14,
-    meta_title = $15, meta_description = $16, meta_keywords = $17, og_image = $18
+    meta_title = $15, meta_description = $16, meta_keywords = $17, og_image = $18,
+    brand = $19, tags = $20, warranty_info = $21
 WHERE id = $1
 RETURNING *;
 

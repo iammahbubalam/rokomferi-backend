@@ -169,6 +169,9 @@ type Product struct {
 	MetaDescription   *string          `json:"meta_description"`
 	MetaKeywords      *string          `json:"meta_keywords"`
 	OgImage           *string          `json:"og_image"`
+	Brand             *string          `json:"brand"`
+	Tags              []string         `json:"tags"`
+	WarrantyInfo      []byte           `json:"warranty_info"`
 }
 
 type ProductCategory struct {
@@ -213,11 +216,18 @@ type User struct {
 }
 
 type Variant struct {
-	ID        pgtype.UUID `json:"id"`
-	ProductID pgtype.UUID `json:"product_id"`
-	Name      string      `json:"name"`
-	Stock     int32       `json:"stock"`
-	Sku       *string     `json:"sku"`
+	ID         pgtype.UUID    `json:"id"`
+	ProductID  pgtype.UUID    `json:"product_id"`
+	Name       string         `json:"name"`
+	Stock      int32          `json:"stock"`
+	Sku        *string        `json:"sku"`
+	Attributes []byte         `json:"attributes"`
+	Price      pgtype.Numeric `json:"price"`
+	SalePrice  pgtype.Numeric `json:"sale_price"`
+	Images     []string       `json:"images"`
+	Weight     pgtype.Numeric `json:"weight"`
+	Dimensions []byte         `json:"dimensions"`
+	Barcode    *string        `json:"barcode"`
 }
 
 type Wishlist struct {

@@ -62,6 +62,11 @@ type Product struct {
 	MetaDescription   string       `json:"metaDescription"`
 	Keywords          string       `json:"keywords"`
 	OGImage           string       `json:"ogImage"`
+
+	// L9 Fields
+	Brand        string   `json:"brand"`
+	Tags         []string `json:"tags"`
+	WarrantyInfo JSONB    `json:"warrantyInfo"`
 }
 
 type Collection struct {
@@ -87,6 +92,15 @@ type Variant struct {
 	Name      string `json:"name"`
 	Stock     int    `json:"stock"`
 	SKU       string `json:"sku"` // Optional: Variant specific SKU
+
+	// L9 Fields
+	Attributes JSONB    `json:"attributes"`
+	Price      *float64 `json:"price"` // Override base price
+	SalePrice  *float64 `json:"salePrice"`
+	Images     []string `json:"images"`
+	Weight     *float64 `json:"weight"`
+	Dimensions JSONB    `json:"dimensions"`
+	Barcode    string   `json:"barcode"`
 }
 
 type InventoryLog struct {

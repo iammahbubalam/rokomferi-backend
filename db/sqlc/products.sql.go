@@ -74,9 +74,19 @@ func (q *Queries) CountProductsWithCategoryFilter(ctx context.Context, arg Count
 }
 
 const createProduct = `-- name: CreateProduct :one
-INSERT INTO products (name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, meta_title, meta_description, meta_keywords, og_image)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-RETURNING id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image
+INSERT INTO products (
+    name, slug, sku, description, base_price, sale_price, 
+    stock, stock_status, low_stock_threshold, is_featured, is_active, 
+    media, attributes, specifications, 
+    meta_title, meta_description, meta_keywords, og_image,
+    brand, tags, warranty_info
+) VALUES (
+    $1, $2, $3, $4, $5, $6, 
+    $7, $8, $9, $10, $11, 
+    $12, $13, $14, 
+    $15, $16, $17, $18,
+    $19, $20, $21
+) RETURNING id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info
 `
 
 type CreateProductParams struct {
@@ -98,6 +108,9 @@ type CreateProductParams struct {
 	MetaDescription   *string        `json:"meta_description"`
 	MetaKeywords      *string        `json:"meta_keywords"`
 	OgImage           *string        `json:"og_image"`
+	Brand             *string        `json:"brand"`
+	Tags              []string       `json:"tags"`
+	WarrantyInfo      []byte         `json:"warranty_info"`
 }
 
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
@@ -120,6 +133,9 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		arg.MetaDescription,
 		arg.MetaKeywords,
 		arg.OgImage,
+		arg.Brand,
+		arg.Tags,
+		arg.WarrantyInfo,
 	)
 	var i Product
 	err := row.Scan(
@@ -145,6 +161,9 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		&i.MetaDescription,
 		&i.MetaKeywords,
 		&i.OgImage,
+		&i.Brand,
+		&i.Tags,
+		&i.WarrantyInfo,
 	)
 	return i, err
 }
@@ -183,7 +202,7 @@ func (q *Queries) GetCategoryIDsForProduct(ctx context.Context, productID pgtype
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image FROM products WHERE id = $1
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products WHERE id = $1
 `
 
 func (q *Queries) GetProductByID(ctx context.Context, id pgtype.UUID) (Product, error) {
@@ -212,12 +231,15 @@ func (q *Queries) GetProductByID(ctx context.Context, id pgtype.UUID) (Product, 
 		&i.MetaDescription,
 		&i.MetaKeywords,
 		&i.OgImage,
+		&i.Brand,
+		&i.Tags,
+		&i.WarrantyInfo,
 	)
 	return i, err
 }
 
 const getProductBySKU = `-- name: GetProductBySKU :one
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image FROM products WHERE sku = $1
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products WHERE sku = $1
 `
 
 func (q *Queries) GetProductBySKU(ctx context.Context, sku string) (Product, error) {
@@ -246,12 +268,15 @@ func (q *Queries) GetProductBySKU(ctx context.Context, sku string) (Product, err
 		&i.MetaDescription,
 		&i.MetaKeywords,
 		&i.OgImage,
+		&i.Brand,
+		&i.Tags,
+		&i.WarrantyInfo,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image FROM products WHERE slug = $1
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -280,12 +305,15 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.MetaDescription,
 		&i.MetaKeywords,
 		&i.OgImage,
+		&i.Brand,
+		&i.Tags,
+		&i.WarrantyInfo,
 	)
 	return i, err
 }
 
 const getProducts = `-- name: GetProducts :many
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image FROM products 
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products 
 WHERE ($3::boolean IS NULL OR is_active = $3)
 AND ($4::boolean IS NULL OR is_featured = $4)
 ORDER BY created_at DESC
@@ -336,6 +364,9 @@ func (q *Queries) GetProducts(ctx context.Context, arg GetProductsParams) ([]Pro
 			&i.MetaDescription,
 			&i.MetaKeywords,
 			&i.OgImage,
+			&i.Brand,
+			&i.Tags,
+			&i.WarrantyInfo,
 		); err != nil {
 			return nil, err
 		}
@@ -348,7 +379,7 @@ func (q *Queries) GetProducts(ctx context.Context, arg GetProductsParams) ([]Pro
 }
 
 const getProductsForCollection = `-- name: GetProductsForCollection :many
-SELECT p.id, p.name, p.slug, p.sku, p.description, p.base_price, p.sale_price, p.stock, p.stock_status, p.low_stock_threshold, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image FROM products p
+SELECT p.id, p.name, p.slug, p.sku, p.description, p.base_price, p.sale_price, p.stock, p.stock_status, p.low_stock_threshold, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info FROM products p
 JOIN product_collections pc ON pc.product_id = p.id
 WHERE pc.collection_id = $1 AND p.is_active = true
 ORDER BY p.created_at DESC
@@ -386,6 +417,9 @@ func (q *Queries) GetProductsForCollection(ctx context.Context, collectionID pgt
 			&i.MetaDescription,
 			&i.MetaKeywords,
 			&i.OgImage,
+			&i.Brand,
+			&i.Tags,
+			&i.WarrantyInfo,
 		); err != nil {
 			return nil, err
 		}
@@ -398,7 +432,7 @@ func (q *Queries) GetProductsForCollection(ctx context.Context, collectionID pgt
 }
 
 const getProductsWithCategoryFilter = `-- name: GetProductsWithCategoryFilter :many
-SELECT DISTINCT p.id, p.name, p.slug, p.sku, p.description, p.base_price, p.sale_price, p.stock, p.stock_status, p.low_stock_threshold, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image FROM products p
+SELECT DISTINCT p.id, p.name, p.slug, p.sku, p.description, p.base_price, p.sale_price, p.stock, p.stock_status, p.low_stock_threshold, p.is_featured, p.is_active, p.media, p.attributes, p.specifications, p.created_at, p.updated_at, p.search_vector, p.meta_title, p.meta_description, p.meta_keywords, p.og_image, p.brand, p.tags, p.warranty_info FROM products p
 JOIN product_categories pc ON pc.product_id = p.id
 JOIN categories c ON c.id = pc.category_id
 WHERE c.slug = $1 AND ($2::boolean IS NULL OR p.is_active = $2)
@@ -450,6 +484,9 @@ func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProd
 			&i.MetaDescription,
 			&i.MetaKeywords,
 			&i.OgImage,
+			&i.Brand,
+			&i.Tags,
+			&i.WarrantyInfo,
 		); err != nil {
 			return nil, err
 		}
@@ -462,7 +499,7 @@ func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProd
 }
 
 const getProductsWithPriceRange = `-- name: GetProductsWithPriceRange :many
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image FROM products
+SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products
 WHERE base_price >= $1 AND base_price <= $2 AND ($3::boolean IS NULL OR is_active = $3)
 ORDER BY created_at DESC
 LIMIT $4 OFFSET $5
@@ -514,6 +551,9 @@ func (q *Queries) GetProductsWithPriceRange(ctx context.Context, arg GetProducts
 			&i.MetaDescription,
 			&i.MetaKeywords,
 			&i.OgImage,
+			&i.Brand,
+			&i.Tags,
+			&i.WarrantyInfo,
 		); err != nil {
 			return nil, err
 		}
@@ -544,9 +584,10 @@ UPDATE products
 SET name = $2, slug = $3, description = $4, base_price = $5, sale_price = $6, 
     stock = $7, stock_status = $8, low_stock_threshold = $9, is_featured = $10, 
     is_active = $11, media = $12, attributes = $13, specifications = $14,
-    meta_title = $15, meta_description = $16, meta_keywords = $17, og_image = $18
+    meta_title = $15, meta_description = $16, meta_keywords = $17, og_image = $18,
+    brand = $19, tags = $20, warranty_info = $21
 WHERE id = $1
-RETURNING id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image
+RETURNING id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info
 `
 
 type UpdateProductParams struct {
@@ -568,6 +609,9 @@ type UpdateProductParams struct {
 	MetaDescription   *string        `json:"meta_description"`
 	MetaKeywords      *string        `json:"meta_keywords"`
 	OgImage           *string        `json:"og_image"`
+	Brand             *string        `json:"brand"`
+	Tags              []string       `json:"tags"`
+	WarrantyInfo      []byte         `json:"warranty_info"`
 }
 
 func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
@@ -590,6 +634,9 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		arg.MetaDescription,
 		arg.MetaKeywords,
 		arg.OgImage,
+		arg.Brand,
+		arg.Tags,
+		arg.WarrantyInfo,
 	)
 	var i Product
 	err := row.Scan(
@@ -615,6 +662,9 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.MetaDescription,
 		&i.MetaKeywords,
 		&i.OgImage,
+		&i.Brand,
+		&i.Tags,
+		&i.WarrantyInfo,
 	)
 	return i, err
 }
