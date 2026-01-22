@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"rokomferi-backend/db/sqlc"
 	"rokomferi-backend/internal/domain"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,14 +37,14 @@ func numericToFloat64(n pgtype.Numeric) float64 {
 
 func float64ToNumeric(f float64) pgtype.Numeric {
 	var n pgtype.Numeric
-	n.Scan(fmt.Sprintf("%f", f))
+	n.Scan(strconv.FormatFloat(f, 'f', -1, 64))
 	return n
 }
 
 func float64PtrToNumeric(f *float64) pgtype.Numeric {
 	var n pgtype.Numeric
 	if f != nil {
-		n.Scan(fmt.Sprintf("%f", *f))
+		n.Scan(strconv.FormatFloat(*f, 'f', -1, 64))
 	}
 	return n
 }

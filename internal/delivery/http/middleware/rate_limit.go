@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -8,29 +9,49 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Simple in-memory rate limiter for single instance deployment
+// L9: Lifecycle-managed rate limiter for graceful shutdown
 type client struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
 
-var (
-	clients = make(map[string]*client)
-	mu      sync.Mutex
-)
+// RateLimiter manages per-IP rate limiting with lifecycle control
+type RateLimiter struct {
+	clients       map[string]*client
+	mu            sync.Mutex
+	limit         rate.Limit
+	burst         int
+	cleanupPeriod time.Duration
+	clientTTL     time.Duration
+	ctx           context.Context
+	cancel        context.CancelFunc
+}
 
-// RateLimitMiddleware applies a token bucket rate limit per IP
+// NewRateLimiter creates a new RateLimiter with background cleanup
 // limit: requests per second
 // burst: maximum burst size
-func RateLimitMiddleware(limit rate.Limit, burst int) func(next http.Handler) http.Handler {
-	// Background cleanup for old entries to prevent memory leak
-	go cleanupClients()
+// cleanupPeriod: how often to remove stale clients
+// clientTTL: how long before a client is considered stale
+func NewRateLimiter(ctx context.Context, limit rate.Limit, burst int, cleanupPeriod, clientTTL time.Duration) *RateLimiter {
+	rl := &RateLimiter{
+		clients:       make(map[string]*client),
+		limit:         limit,
+		burst:         burst,
+		cleanupPeriod: cleanupPeriod,
+		clientTTL:     clientTTL,
+	}
+	rl.ctx, rl.cancel = context.WithCancel(ctx)
+	go rl.cleanupLoop()
+	return rl
+}
 
+// Middleware returns the HTTP middleware handler
+func (rl *RateLimiter) Middleware() func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
 
-			limiter := getVisitor(ip, limit, burst)
+			limiter := rl.getVisitor(ip)
 			if !limiter.Allow() {
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
@@ -41,14 +62,14 @@ func RateLimitMiddleware(limit rate.Limit, burst int) func(next http.Handler) ht
 	}
 }
 
-func getVisitor(ip string, r rate.Limit, b int) *rate.Limiter {
-	mu.Lock()
-	defer mu.Unlock()
+func (rl *RateLimiter) getVisitor(ip string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 
-	v, exists := clients[ip]
+	v, exists := rl.clients[ip]
 	if !exists {
-		limiter := rate.NewLimiter(r, b)
-		clients[ip] = &client{limiter: limiter, lastSeen: time.Now()}
+		limiter := rate.NewLimiter(rl.limit, rl.burst)
+		rl.clients[ip] = &client{limiter: limiter, lastSeen: time.Now()}
 		return limiter
 	}
 
@@ -56,15 +77,33 @@ func getVisitor(ip string, r rate.Limit, b int) *rate.Limiter {
 	return v.limiter
 }
 
-func cleanupClients() {
+// cleanupLoop runs periodic cleanup with context cancellation support
+func (rl *RateLimiter) cleanupLoop() {
+	ticker := time.NewTicker(rl.cleanupPeriod)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(time.Minute)
-		mu.Lock()
-		for ip, v := range clients {
-			if time.Since(v.lastSeen) > 3*time.Minute {
-				delete(clients, ip)
-			}
+		select {
+		case <-ticker.C:
+			rl.cleanup()
+		case <-rl.ctx.Done():
+			return // Graceful shutdown
 		}
-		mu.Unlock()
 	}
+}
+
+func (rl *RateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	for ip, v := range rl.clients {
+		if time.Since(v.lastSeen) > rl.clientTTL {
+			delete(rl.clients, ip)
+		}
+	}
+}
+
+// Shutdown gracefully stops the cleanup goroutine
+func (rl *RateLimiter) Shutdown() {
+	rl.cancel()
 }

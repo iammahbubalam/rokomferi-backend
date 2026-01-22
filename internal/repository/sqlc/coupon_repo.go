@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"rokomferi-backend/internal/domain"
+	"strconv"
 
 	// Import the GENERATED SQLC package alias
 	"rokomferi-backend/db/sqlc"
@@ -204,11 +205,11 @@ func NumericToFloat64(n pgtype.Numeric) float64 {
 }
 
 // Float64ToNumeric converts float64 to pgtype.Numeric
-// L9: Use string conversion since Scan doesn't accept float64 directly
+// L9: Use strconv.FormatFloat for zero-allocation conversion
 func Float64ToNumeric(f float64) (pgtype.Numeric, error) {
 	var n pgtype.Numeric
-	// Convert float64 to string for scanning
-	str := fmt.Sprintf("%.2f", f)
+	// Convert float64 to string with 2 decimal precision
+	str := strconv.FormatFloat(f, 'f', 2, 64)
 	err := n.Scan(str)
 	if err != nil {
 		return pgtype.Numeric{}, err

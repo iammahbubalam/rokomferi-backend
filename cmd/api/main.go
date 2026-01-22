@@ -9,6 +9,7 @@ import (
 	"rokomferi-backend/config"
 	"rokomferi-backend/internal/delivery/http/middleware"
 	v1 "rokomferi-backend/internal/delivery/http/v1"
+	"rokomferi-backend/internal/infrastructure/cache"
 	sqlcrepo "rokomferi-backend/internal/repository/sqlc"
 	"rokomferi-backend/internal/usecase"
 	"rokomferi-backend/pkg/logger"
@@ -43,6 +44,10 @@ func main() {
 	txManager := sqlcrepo.NewTransactionManager(pgxPool)
 	couponRepo := sqlcrepo.NewCouponRepository(pgxPool)
 
+	// Initialize Cache (In-Memory)
+	// Default expiration 30m, cleanup every 60m
+	memCache := cache.NewMemoryCache(30*time.Minute, 60*time.Minute)
+
 	// Set up Router
 	mux := http.NewServeMux()
 
@@ -61,19 +66,21 @@ func main() {
 
 	// --- Storage Module (R2) ---
 	r2Storage, err := storage.NewR2Storage(
+		context.Background(),
 		cfg.R2AccountID,
 		cfg.R2AccessKeyID,
 		cfg.R2AccessKeySecret,
 		cfg.R2BucketName,
 		cfg.R2PublicURL,
+		cfg.R2UploadTimeout,
 	)
 	if err != nil {
-		log.Printf("Warning: Failed to initialize R2 Storage: %v", err)
+		log.Fatal().Err(err).Msg("Failed to initialize R2 Storage")
 	}
-	uploadHandler := v1.NewUploadHandler(r2Storage)
+	uploadHandler := v1.NewUploadHandler(r2Storage, cfg.MaxUploadSizeMB)
 
 	// Catalog Module
-	catalogUC := usecase.NewCatalogUsecase(productRepo, orderRepo)
+	catalogUC := usecase.NewCatalogUsecase(productRepo, orderRepo, memCache, cfg)
 	catalogHandler := v1.NewCatalogHandler(catalogUC)
 
 	// Admin Catalog Handlers
@@ -81,7 +88,7 @@ func main() {
 
 	// Order Module
 	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, couponRepo, txManager)
-	orderHandler := v1.NewOrderHandler(orderUC)
+	orderHandler := v1.NewOrderHandler(orderUC, cfg.MaxCartQuantity)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 
 	// Content Module
@@ -94,7 +101,7 @@ func main() {
 	searchHandler := v1.NewSearchHandler(searchUC)
 
 	// Sitemap Module
-	sitemapUC := usecase.NewSitemapUsecase(productRepo, cfg.FrontendURL)
+	sitemapUC := usecase.NewSitemapUsecase(productRepo, cfg.FrontendURL, memCache, cfg)
 	sitemapHandler := v1.NewSitemapHandler(sitemapUC)
 
 	// --- Routes ---
@@ -207,11 +214,20 @@ func main() {
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Info().Msgf("Server starting on %s", addr)
 
-	// Apply CORS and Request Logger
-	handler := middleware.CORS(mux)
+	// Initialize Rate Limiter with lifecycle management
+	// 50 req/s, burst 100, cleanup every minute, TTL 3 minutes
+	rateLimiter := middleware.NewRateLimiter(
+		context.Background(),
+		50,            // requests per second
+		100,           // burst
+		time.Minute,   // cleanup period
+		3*time.Minute, // client TTL
+	)
+
+	// Apply CORS (with config injection), Request Logger, Rate Limit, and Gzip
+	handler := middleware.NewCORSMiddleware(cfg)(mux)
 	handler = middleware.RequestLogger(handler)
-	// Rate Limit: 50 req/s, burst 100
-	handler = middleware.RateLimitMiddleware(50, 100)(handler)
+	handler = rateLimiter.Middleware()(handler)
 	handler = gziphandler.GzipHandler(handler)
 
 	srv := &http.Server{
@@ -234,6 +250,9 @@ func main() {
 	<-quit
 
 	log.Info().Msg("Server shutting down...")
+
+	// L9: Graceful shutdown - stop rate limiter cleanup goroutine
+	rateLimiter.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

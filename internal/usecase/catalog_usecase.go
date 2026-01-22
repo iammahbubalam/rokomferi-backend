@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"rokomferi-backend/config"
 	"rokomferi-backend/internal/domain"
+	"rokomferi-backend/pkg/cache"
 	"rokomferi-backend/pkg/utils"
 	"time"
 )
@@ -11,12 +13,16 @@ import (
 type CatalogUsecase struct {
 	repo      domain.ProductRepository
 	orderRepo domain.OrderRepository
+	cache     cache.CacheService
+	cfg       *config.Config
 }
 
-func NewCatalogUsecase(repo domain.ProductRepository, orderRepo domain.OrderRepository) *CatalogUsecase {
+func NewCatalogUsecase(repo domain.ProductRepository, orderRepo domain.OrderRepository, cache cache.CacheService, cfg *config.Config) *CatalogUsecase {
 	return &CatalogUsecase{
 		repo:      repo,
 		orderRepo: orderRepo,
+		cache:     cache,
+		cfg:       cfg,
 	}
 }
 
@@ -59,11 +65,33 @@ func (uc *CatalogUsecase) GetInventoryLogs(ctx context.Context, productID string
 }
 
 func (u *CatalogUsecase) GetCategoryTree(ctx context.Context) ([]domain.Category, error) {
-	return u.repo.GetCategoryTree(ctx)
+	key := "category:tree:all"
+	if val, found := u.cache.Get(key); found {
+		return val.([]domain.Category), nil
+	}
+
+	tree, err := u.repo.GetCategoryTree(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	u.cache.Set(key, tree, u.cfg.CacheCategoryTTL)
+	return tree, nil
 }
 
 func (u *CatalogUsecase) GetNavCategoryTree(ctx context.Context) ([]domain.Category, error) {
-	return u.repo.GetNavCategoryTree(ctx)
+	key := "category:tree:nav"
+	if val, found := u.cache.Get(key); found {
+		return val.([]domain.Category), nil
+	}
+
+	tree, err := u.repo.GetNavCategoryTree(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	u.cache.Set(key, tree, u.cfg.CacheCategoryTTL)
+	return tree, nil
 }
 
 func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.Category) error {
@@ -88,6 +116,10 @@ func (uc *CatalogUsecase) UpdateCategory(ctx context.Context, category *domain.C
 	if category.ID == "" {
 		return fmt.Errorf("category ID required")
 	}
+	// Invalidate cache
+	// Invalidate cache
+	uc.cache.Delete("category:tree:all")
+	uc.cache.Delete("category:tree:nav")
 	return uc.repo.UpdateCategory(ctx, category)
 }
 
@@ -105,7 +137,20 @@ func (u *CatalogUsecase) ListProducts(ctx context.Context, filter domain.Product
 }
 
 func (u *CatalogUsecase) GetProductDetails(ctx context.Context, slug string) (*domain.Product, error) {
-	return u.repo.GetProductBySlug(ctx, slug)
+	key := fmt.Sprintf("product:slug:%s", slug)
+	if val, found := u.cache.Get(key); found {
+		return val.(*domain.Product), nil
+	}
+
+	product, err := u.repo.GetProductBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	if product != nil {
+		u.cache.Set(key, product, u.cfg.CacheProductTTL)
+	}
+
+	return product, nil
 }
 
 func (u *CatalogUsecase) GetProductByID(ctx context.Context, id string) (*domain.Product, error) {

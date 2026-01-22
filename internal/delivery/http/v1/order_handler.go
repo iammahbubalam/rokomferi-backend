@@ -4,17 +4,23 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
+
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
 	"rokomferi-backend/pkg/utils"
 )
 
 type OrderHandler struct {
-	orderUC *usecase.OrderUsecase
+	orderUC         *usecase.OrderUsecase
+	maxCartQuantity int
 }
 
-func NewOrderHandler(uc *usecase.OrderUsecase) *OrderHandler {
-	return &OrderHandler{orderUC: uc}
+func NewOrderHandler(uc *usecase.OrderUsecase, maxCartQuantity int) *OrderHandler {
+	return &OrderHandler{
+		orderUC:         uc,
+		maxCartQuantity: maxCartQuantity,
+	}
 }
 
 // --- Cart Handlers ---
@@ -48,6 +54,16 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	var req addToCartReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// L9: Validate quantity bounds
+	if req.Quantity <= 0 {
+		http.Error(w, "Quantity must be positive", http.StatusBadRequest)
+		return
+	}
+	if req.Quantity > h.maxCartQuantity {
+		http.Error(w, "Quantity exceeds maximum limit", http.StatusBadRequest)
 		return
 	}
 
@@ -104,13 +120,14 @@ func (h *OrderHandler) UpdateCart(w http.ResponseWriter, r *http.Request) {
 		slog.Error("UpdateCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
 
 		statusCode := http.StatusInternalServerError
-		if contains(err.Error(), "insufficient stock") || contains(err.Error(), "out of stock") || contains(err.Error(), "not found") {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "insufficient stock") || strings.Contains(errMsg, "out of stock") || strings.Contains(errMsg, "not found") {
 			statusCode = http.StatusBadRequest
 		}
 
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(map[string]string{
-			"message": err.Error(),
+			"message": errMsg,
 		})
 		return
 	}
@@ -138,7 +155,7 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
 
-		if contains(errMsg, "insufficient stock") || contains(errMsg, "out of stock") || contains(errMsg, "cart is empty") || contains(errMsg, "not found") {
+		if strings.Contains(errMsg, "insufficient stock") || strings.Contains(errMsg, "out of stock") || strings.Contains(errMsg, "cart is empty") || strings.Contains(errMsg, "not found") {
 			statusCode = http.StatusBadRequest
 		}
 
@@ -198,8 +215,4 @@ func (h *OrderHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, resp)
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[0:len(substr)] == substr || contains(s[1:], substr)))
 }

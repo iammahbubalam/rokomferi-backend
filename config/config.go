@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -30,6 +31,15 @@ type Config struct {
 	R2AccessKeySecret string
 	R2BucketName      string
 	R2PublicURL       string
+	// Cache (L9 Standard)
+	CacheCategoryTTL time.Duration
+	CacheProductTTL  time.Duration
+	CacheSitemapTTL  time.Duration
+	// Upload Configuration
+	MaxUploadSizeMB int64
+	R2UploadTimeout time.Duration
+	// Business Rules
+	MaxCartQuantity int
 }
 
 func LoadConfig() *Config {
@@ -61,6 +71,18 @@ func LoadConfig() *Config {
 		R2AccessKeySecret: getEnv("R2_ACCESS_KEY_SECRET", ""),
 		R2BucketName:      getEnv("R2_BUCKET_NAME", ""),
 		R2PublicURL:       getEnv("R2_PUBLIC_URL", ""),
+
+		// Cache defaults: 30m Category, 10m Product, 6h Sitemap
+		CacheCategoryTTL: getDurationEnv("CACHE_CATEGORY_TTL", 30*time.Minute),
+		CacheProductTTL:  getDurationEnv("CACHE_PRODUCT_TTL", 10*time.Minute),
+		CacheSitemapTTL:  getDurationEnv("CACHE_SITEMAP_TTL", 6*time.Hour),
+
+		// Upload defaults: 10MB max, 30s timeout
+		MaxUploadSizeMB: getInt64Env("MAX_UPLOAD_SIZE_MB", 10),
+		R2UploadTimeout: getDurationEnv("R2_UPLOAD_TIMEOUT", 30*time.Second),
+
+		// Business rules: 1000 max cart quantity
+		MaxCartQuantity: getIntEnv("MAX_CART_QUANTITY", 1000),
 	}
 
 	cfg.Validate()
@@ -92,6 +114,26 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 			return d
 		}
 		log.Printf("Invalid duration for %s, using fallback", key)
+	}
+	return fallback
+}
+
+func getIntEnv(key string, fallback int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+		log.Printf("Invalid int for %s, using fallback", key)
+	}
+	return fallback
+}
+
+func getInt64Env(key string, fallback int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return i
+		}
+		log.Printf("Invalid int64 for %s, using fallback", key)
 	}
 	return fallback
 }

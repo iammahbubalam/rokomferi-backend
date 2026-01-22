@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"rokomferi-backend/config"
 	"rokomferi-backend/internal/domain"
+	"rokomferi-backend/pkg/cache"
 	"time"
 )
 
@@ -17,9 +19,11 @@ type SitemapItem struct {
 type SitemapUsecase struct {
 	productRepo domain.ProductRepository
 	baseURL     string
+	cache       cache.CacheService
+	cfg         *config.Config
 }
 
-func NewSitemapUsecase(repo domain.ProductRepository, baseURL string) *SitemapUsecase {
+func NewSitemapUsecase(repo domain.ProductRepository, baseURL string, cache cache.CacheService, cfg *config.Config) *SitemapUsecase {
 	if baseURL == "" {
 		// Should be handled by config, but strictly no hardcoded production domain here.
 		// Fallback to empty string or a placeholder if really needed, but better to trust injection.
@@ -27,10 +31,17 @@ func NewSitemapUsecase(repo domain.ProductRepository, baseURL string) *SitemapUs
 	return &SitemapUsecase{
 		productRepo: repo,
 		baseURL:     baseURL,
+		cache:       cache,
+		cfg:         cfg,
 	}
 }
 
 func (u *SitemapUsecase) GenerateSitemap(ctx context.Context) ([]SitemapItem, error) {
+	key := "sitemap:items"
+	if val, found := u.cache.Get(key); found {
+		return val.([]SitemapItem), nil
+	}
+
 	var items []SitemapItem
 	now := time.Now().Format("2006-01-02")
 
@@ -106,5 +117,6 @@ func (u *SitemapUsecase) GenerateSitemap(ctx context.Context) ([]SitemapItem, er
 		}
 	}
 
+	u.cache.Set(key, items, u.cfg.CacheSitemapTTL)
 	return items, nil
 }

@@ -136,6 +136,12 @@ func (h *CatalogHandler) AddReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// L9: Validate rating bounds
+	if req.Rating < 1 || req.Rating > 5 {
+		http.Error(w, "Rating must be between 1 and 5", http.StatusBadRequest)
+		return
+	}
+
 	if err := h.catalogUC.AddReview(r.Context(), user.ID, productID, req.Rating, req.Comment); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
