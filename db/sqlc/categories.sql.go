@@ -248,6 +248,49 @@ func (q *Queries) GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID
 	return items, nil
 }
 
+const getCategoriesFlat = `-- name: GetCategoriesFlat :many
+SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories 
+WHERE ($1::boolean IS NULL OR is_active = $1)
+ORDER BY name ASC
+`
+
+func (q *Queries) GetCategoriesFlat(ctx context.Context, isActive *bool) ([]Category, error) {
+	rows, err := q.db.Query(ctx, getCategoriesFlat, isActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.ParentID,
+			&i.OrderIndex,
+			&i.Icon,
+			&i.Image,
+			&i.IsActive,
+			&i.ShowInNav,
+			&i.MetaTitle,
+			&i.MetaDescription,
+			&i.Keywords,
+			&i.IsFeatured,
+			&i.OgImage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCategoryByID = `-- name: GetCategoryByID :one
 SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE id = $1
 `

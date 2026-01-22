@@ -43,3 +43,8 @@ UPDATE categories SET order_index = $2, parent_id = $3 WHERE id = $1;
 
 -- name: GetCategoriesByIDs :many
 SELECT * FROM categories WHERE id = ANY($1::uuid[]);
+
+-- name: GetCategoriesFlat :many
+SELECT * FROM categories 
+WHERE (sqlc.narg('is_active')::boolean IS NULL OR is_active = sqlc.narg('is_active'))
+ORDER BY name ASC;

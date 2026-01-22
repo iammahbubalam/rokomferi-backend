@@ -103,6 +103,15 @@ type Variant struct {
 	Barcode    string   `json:"barcode"`
 }
 
+type ProductStats struct {
+	TotalProducts       int64   `json:"totalProducts"`
+	ActiveProducts      int64   `json:"activeProducts"`
+	InactiveProducts    int64   `json:"inactiveProducts"`
+	OutOfStock          int64   `json:"outOfStock"`
+	LowStock            int64   `json:"lowStock"`
+	TotalInventoryValue float64 `json:"totalInventoryValue"`
+}
+
 type InventoryLog struct {
 	ID           uint      `json:"id"`
 	ProductID    string    `json:"productId"`
@@ -124,6 +133,7 @@ type ProductRepository interface {
 	UpdateCategory(ctx context.Context, category *Category) error
 	DeleteCategory(ctx context.Context, id string) error
 	ReorderCategories(ctx context.Context, updates []CategoryReorderItem) error
+	GetCategoriesFlat(ctx context.Context, isActive *bool) ([]Category, error)
 
 	// Collection Management
 	GetCollections(ctx context.Context) ([]Collection, error)
@@ -146,6 +156,7 @@ type ProductRepository interface {
 	UpdateProduct(ctx context.Context, product *Product) error
 	UpdateProductStatus(ctx context.Context, id string, isActive bool) error
 	DeleteProduct(ctx context.Context, id string) error
+	GetProductStats(ctx context.Context) (*ProductStats, error)
 
 	// Reviews
 	CreateReview(ctx context.Context, review *Review) error

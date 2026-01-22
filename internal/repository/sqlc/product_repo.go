@@ -312,6 +312,24 @@ func (r *productRepository) GetCategoryBySlug(ctx context.Context, slug string) 
 	return &cat, nil
 }
 
+// GetCategoriesFlat returns a flat list of categories (no hierarchy) with optional isActive filter
+func (r *productRepository) GetCategoriesFlat(ctx context.Context, isActive *bool) ([]domain.Category, error) {
+	cats, err := r.queries.GetCategoriesFlat(ctx, isActive)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]domain.Category, 0, len(cats))
+	for _, c := range cats {
+		// Skip empty/invalid categories
+		if c.Name == "" {
+			continue
+		}
+		result = append(result, sqlcCategoryToDomain(c))
+	}
+	return result, nil
+}
+
 func (r *productRepository) CreateCategory(ctx context.Context, category *domain.Category) error {
 	var parentID pgtype.UUID
 	if category.ParentID != nil {
@@ -508,7 +526,58 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 	var count int64
 	var err error
 
-	if filter.CategorySlug != "" {
+	// Priority 1: Full-text search query (if provided)
+	if filter.Query != "" {
+		// Use full-text search queries
+		searchRows, err := r.queries.SearchProducts(ctx, sqlc.SearchProductsParams{
+			Query:    filter.Query,
+			IsActive: filter.IsActive,
+			Limit:    limit,
+			Offset:   int32(filter.Offset),
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+
+		count, err = r.queries.CountSearchProducts(ctx, sqlc.CountSearchProductsParams{
+			Query:    filter.Query,
+			IsActive: filter.IsActive,
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Convert search rows to standard product rows for unified processing
+		for _, row := range searchRows {
+			products = append(products, sqlc.Product{
+				ID:                row.ID,
+				Name:              row.Name,
+				Slug:              row.Slug,
+				Sku:               row.Sku,
+				Description:       row.Description,
+				BasePrice:         row.BasePrice,
+				SalePrice:         row.SalePrice,
+				Stock:             row.Stock,
+				StockStatus:       row.StockStatus,
+				LowStockThreshold: row.LowStockThreshold,
+				IsFeatured:        row.IsFeatured,
+				IsActive:          row.IsActive,
+				Media:             row.Media,
+				Attributes:        row.Attributes,
+				Specifications:    row.Specifications,
+				MetaTitle:         row.MetaTitle,
+				MetaDescription:   row.MetaDescription,
+				MetaKeywords:      row.MetaKeywords,
+				OgImage:           row.OgImage,
+				Brand:             row.Brand,
+				Tags:              row.Tags,
+				WarrantyInfo:      row.WarrantyInfo,
+				CreatedAt:         row.CreatedAt,
+				UpdatedAt:         row.UpdatedAt,
+			})
+		}
+	} else if filter.CategorySlug != "" {
+		// Priority 2: Category filter
 		products, err = r.queries.GetProductsWithCategoryFilter(ctx, sqlc.GetProductsWithCategoryFilterParams{
 			Slug:     filter.CategorySlug,
 			IsActive: filter.IsActive,
@@ -527,6 +596,7 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 			return nil, 0, err
 		}
 	} else {
+		// Default: Standard product listing
 		products, err = r.queries.GetProducts(ctx, sqlc.GetProductsParams{
 			IsActive:   filter.IsActive,
 			IsFeatured: filter.IsFeatured,
@@ -1006,6 +1076,22 @@ func (r *productRepository) UpdateProductStatus(ctx context.Context, id string, 
 
 func (r *productRepository) DeleteProduct(ctx context.Context, id string) error {
 	return r.queries.DeleteProduct(ctx, stringToUUID(id))
+}
+
+func (r *productRepository) GetProductStats(ctx context.Context) (*domain.ProductStats, error) {
+	row, err := r.queries.GetProductStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.ProductStats{
+		TotalProducts:       row.TotalProducts,
+		ActiveProducts:      row.ActiveProducts,
+		InactiveProducts:    row.InactiveProducts,
+		OutOfStock:          row.OutOfStock,
+		LowStock:            row.LowStock,
+		TotalInventoryValue: row.TotalInventoryValue,
+	}, nil
 }
 
 // --- Reviews ---

@@ -448,6 +448,40 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 	return i, err
 }
 
+const getProductStats = `-- name: GetProductStats :one
+SELECT 
+    COUNT(*) as total_products,
+    COUNT(*) FILTER (WHERE is_active = true) as active_products,
+    COUNT(*) FILTER (WHERE is_active = false) as inactive_products,
+    COUNT(*) FILTER (WHERE stock = 0) as out_of_stock,
+    COUNT(*) FILTER (WHERE stock > 0 AND stock <= low_stock_threshold) as low_stock,
+    COALESCE(SUM(base_price * stock), 0)::float8 as total_inventory_value
+FROM products
+`
+
+type GetProductStatsRow struct {
+	TotalProducts       int64   `json:"total_products"`
+	ActiveProducts      int64   `json:"active_products"`
+	InactiveProducts    int64   `json:"inactive_products"`
+	OutOfStock          int64   `json:"out_of_stock"`
+	LowStock            int64   `json:"low_stock"`
+	TotalInventoryValue float64 `json:"total_inventory_value"`
+}
+
+func (q *Queries) GetProductStats(ctx context.Context) (GetProductStatsRow, error) {
+	row := q.db.QueryRow(ctx, getProductStats)
+	var i GetProductStatsRow
+	err := row.Scan(
+		&i.TotalProducts,
+		&i.ActiveProducts,
+		&i.InactiveProducts,
+		&i.OutOfStock,
+		&i.LowStock,
+		&i.TotalInventoryValue,
+	)
+	return i, err
+}
+
 const getProducts = `-- name: GetProducts :many
 SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info FROM products 
 WHERE ($3::boolean IS NULL OR is_active = $3)

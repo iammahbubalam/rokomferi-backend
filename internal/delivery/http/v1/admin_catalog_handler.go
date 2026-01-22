@@ -19,15 +19,39 @@ func NewAdminCatalogHandler(uc *usecase.CatalogUsecase) *AdminCatalogHandler {
 	return &AdminCatalogHandler{catalogUC: uc}
 }
 
-// GetAllCategories returns ALL categories (including inactive) for admin panel
+// GetAllCategories returns a FLAT list of categories (no hierarchy) for admin selection dropdowns
+// Query params: isActive (optional) - "true", "false", or omit for all
 func (h *AdminCatalogHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
-	cats, err := h.catalogUC.GetCategoryTree(r.Context())
+	// Parse optional isActive filter
+	var isActive *bool
+	if val := r.URL.Query().Get("isActive"); val != "" {
+		switch val {
+		case "true":
+			t := true
+			isActive = &t
+		case "false":
+			f := false
+			isActive = &f
+		}
+	}
+
+	cats, err := h.catalogUC.GetCategoriesFlat(r.Context(), isActive)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cats)
+}
+
+func (h *AdminCatalogHandler) GetProductStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.catalogUC.GetProductStats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
 }
 
 type productReq struct {

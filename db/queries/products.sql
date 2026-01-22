@@ -119,3 +119,13 @@ SELECT product_id, category_id FROM product_categories WHERE product_id = ANY($1
 
 -- name: GetCollectionIDsForProducts :many
 SELECT product_id, collection_id FROM product_collections WHERE product_id = ANY($1::uuid[]);
+
+-- name: GetProductStats :one
+SELECT 
+    COUNT(*) as total_products,
+    COUNT(*) FILTER (WHERE is_active = true) as active_products,
+    COUNT(*) FILTER (WHERE is_active = false) as inactive_products,
+    COUNT(*) FILTER (WHERE stock = 0) as out_of_stock,
+    COUNT(*) FILTER (WHERE stock > 0 AND stock <= low_stock_threshold) as low_stock,
+    COALESCE(SUM(base_price * stock), 0)::float8 as total_inventory_value
+FROM products;

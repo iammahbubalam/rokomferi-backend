@@ -39,24 +39,31 @@ func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Pro
 	product.UpdatedAt = time.Now()
 	product.IsActive = true
 
+	uc.invalidateStatsCache()
 	return uc.repo.CreateProduct(ctx, product)
 }
 
 func (uc *CatalogUsecase) UpdateProduct(ctx context.Context, product *domain.Product) error {
 	product.UpdatedAt = time.Now()
 	// Prevent slug update? Or allow re-generation? Let's allow simple update for now.
+	// Invalidate cache
+	uc.cache.Delete(fmt.Sprintf("product:slug:%s", product.Slug))
+	uc.invalidateStatsCache()
 	return uc.repo.UpdateProduct(ctx, product)
 }
 
 func (uc *CatalogUsecase) UpdateProductStatus(ctx context.Context, id string, isActive bool) error {
+	uc.invalidateStatsCache()
 	return uc.repo.UpdateProductStatus(ctx, id, isActive)
 }
 
 func (uc *CatalogUsecase) DeleteProduct(ctx context.Context, id string) error {
+	uc.invalidateStatsCache()
 	return uc.repo.DeleteProduct(ctx, id)
 }
 
 func (uc *CatalogUsecase) AdjustStock(ctx context.Context, productID string, changeAmount int, reason, referenceID string) error {
+	uc.invalidateStatsCache()
 	return uc.repo.UpdateStock(ctx, productID, changeAmount, reason, referenceID)
 }
 
@@ -94,6 +101,32 @@ func (u *CatalogUsecase) GetNavCategoryTree(ctx context.Context) ([]domain.Categ
 	return tree, nil
 }
 
+// GetCategoriesFlat returns a flat list of categories without hierarchy
+// isActive: nil = all, true = active only, false = inactive only
+func (u *CatalogUsecase) GetCategoriesFlat(ctx context.Context, isActive *bool) ([]domain.Category, error) {
+	// Build cache key based on filter
+	var key string
+	if isActive == nil {
+		key = "category:flat:all"
+	} else if *isActive {
+		key = "category:flat:active"
+	} else {
+		key = "category:flat:inactive"
+	}
+
+	if val, found := u.cache.Get(key); found {
+		return val.([]domain.Category), nil
+	}
+
+	cats, err := u.repo.GetCategoriesFlat(ctx, isActive)
+	if err != nil {
+		return nil, err
+	}
+
+	u.cache.Set(key, cats, u.cfg.CacheCategoryTTL)
+	return cats, nil
+}
+
 func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.Category) error {
 	if category.Name == "" {
 		return fmt.Errorf("category name is required")
@@ -109,6 +142,7 @@ func (uc *CatalogUsecase) CreateCategory(ctx context.Context, category *domain.C
 	if category.ID == "" {
 		category.ID = utils.GenerateUUID()
 	}
+	uc.invalidateCategoryCache()
 	return uc.repo.CreateCategory(ctx, category)
 }
 
@@ -117,13 +151,12 @@ func (uc *CatalogUsecase) UpdateCategory(ctx context.Context, category *domain.C
 		return fmt.Errorf("category ID required")
 	}
 	// Invalidate cache
-	// Invalidate cache
-	uc.cache.Delete("category:tree:all")
-	uc.cache.Delete("category:tree:nav")
+	uc.invalidateCategoryCache()
 	return uc.repo.UpdateCategory(ctx, category)
 }
 
 func (uc *CatalogUsecase) DeleteCategory(ctx context.Context, id string) error {
+	uc.invalidateCategoryCache()
 	return uc.repo.DeleteCategory(ctx, id)
 }
 
@@ -229,10 +262,37 @@ func (uc *CatalogUsecase) DeleteCollection(ctx context.Context, id string) error
 	return uc.repo.DeleteCollection(ctx, id)
 }
 
+func (uc *CatalogUsecase) GetProductStats(ctx context.Context) (*domain.ProductStats, error) {
+	key := "admin:product_stats"
+	if val, found := uc.cache.Get(key); found {
+		return val.(*domain.ProductStats), nil
+	}
+
+	stats, err := uc.repo.GetProductStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	uc.cache.Set(key, stats, uc.cfg.CacheCategoryTTL) // Re-use category TTL or similar
+	return stats, nil
+}
+
 func (uc *CatalogUsecase) AddProductToCollection(ctx context.Context, collectionID, productID string) error {
 	return uc.repo.AddProductToCollection(ctx, collectionID, productID)
 }
 
 func (uc *CatalogUsecase) RemoveProductFromCollection(ctx context.Context, collectionID, productID string) error {
 	return uc.repo.RemoveProductFromCollection(ctx, collectionID, productID)
+}
+
+func (uc *CatalogUsecase) invalidateStatsCache() {
+	uc.cache.Delete("admin:product_stats")
+}
+
+func (uc *CatalogUsecase) invalidateCategoryCache() {
+	uc.cache.Delete("category:tree:all")
+	uc.cache.Delete("category:tree:nav")
+	uc.cache.Delete("category:flat:all")
+	uc.cache.Delete("category:flat:active")
+	uc.cache.Delete("category:flat:inactive")
 }
