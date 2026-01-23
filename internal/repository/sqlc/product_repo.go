@@ -62,26 +62,23 @@ func numericToFloat64Ptr(n pgtype.Numeric) *float64 {
 
 func sqlcProductToDomain(p sqlc.Product) domain.Product {
 	prod := domain.Product{
-		ID:                uuidToString(p.ID),
-		Name:              p.Name,
-		Slug:              p.Slug,
-		SKU:               p.Sku,
-		Description:       ptrString(p.Description),
-		BasePrice:         numericToFloat64(p.BasePrice),
-		SalePrice:         numericToFloat64Ptr(p.SalePrice),
-		Stock:             int(p.Stock),
-		StockStatus:       ptrString(p.StockStatus),
-		LowStockThreshold: int(p.LowStockThreshold),
-		IsFeatured:        p.IsFeatured,
-		IsActive:          p.IsActive,
-		CreatedAt:         pgtimeToTime(p.CreatedAt),
-		UpdatedAt:         pgtimeToTime(p.UpdatedAt),
-		MetaTitle:         ptrString(p.MetaTitle),
-		MetaDescription:   ptrString(p.MetaDescription),
-		Keywords:          ptrString(p.MetaKeywords),
-		OGImage:           ptrString(p.OgImage),
-		Brand:             ptrString(p.Brand),
-		Tags:              p.Tags,
+		ID:              uuidToString(p.ID),
+		Name:            p.Name,
+		Slug:            p.Slug,
+		Description:     ptrString(p.Description),
+		BasePrice:       numericToFloat64(p.BasePrice),
+		SalePrice:       numericToFloat64Ptr(p.SalePrice),
+		StockStatus:     ptrString(p.StockStatus),
+		IsFeatured:      p.IsFeatured,
+		IsActive:        p.IsActive,
+		CreatedAt:       pgtimeToTime(p.CreatedAt),
+		UpdatedAt:       pgtimeToTime(p.UpdatedAt),
+		MetaTitle:       ptrString(p.MetaTitle),
+		MetaDescription: ptrString(p.MetaDescription),
+		Keywords:        ptrString(p.MetaKeywords),
+		OGImage:         ptrString(p.OgImage),
+		Brand:           ptrString(p.Brand),
+		Tags:            p.Tags,
 	}
 
 	// Handle Media (JSONB)
@@ -187,16 +184,17 @@ func sqlcCollectionToDomain(c sqlc.Collection) domain.Collection {
 
 func sqlcVariantToDomain(v sqlc.Variant) domain.Variant {
 	variant := domain.Variant{
-		ID:        uuidToString(v.ID),
-		ProductID: uuidToString(v.ProductID),
-		Name:      v.Name,
-		Stock:     int(v.Stock),
-		SKU:       ptrString(v.Sku),
-		Price:     numericToFloat64Ptr(v.Price),
-		SalePrice: numericToFloat64Ptr(v.SalePrice),
-		Images:    v.Images,
-		Weight:    numericToFloat64Ptr(v.Weight),
-		Barcode:   ptrString(v.Barcode),
+		ID:                uuidToString(v.ID),
+		ProductID:         uuidToString(v.ProductID),
+		Name:              v.Name,
+		Stock:             int(v.Stock),
+		SKU:               ptrString(v.Sku),
+		Price:             numericToFloat64Ptr(v.Price),
+		SalePrice:         numericToFloat64Ptr(v.SalePrice),
+		Images:            v.Images,
+		Weight:            numericToFloat64Ptr(v.Weight),
+		Barcode:           ptrString(v.Barcode),
+		LowStockThreshold: int(v.LowStockThreshold),
 	}
 
 	if len(v.Attributes) > 0 {
@@ -550,30 +548,28 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 		// Convert search rows to standard product rows for unified processing
 		for _, row := range searchRows {
 			products = append(products, sqlc.Product{
-				ID:                row.ID,
-				Name:              row.Name,
-				Slug:              row.Slug,
-				Sku:               row.Sku,
-				Description:       row.Description,
-				BasePrice:         row.BasePrice,
-				SalePrice:         row.SalePrice,
-				Stock:             row.Stock,
-				StockStatus:       row.StockStatus,
-				LowStockThreshold: row.LowStockThreshold,
-				IsFeatured:        row.IsFeatured,
-				IsActive:          row.IsActive,
-				Media:             row.Media,
-				Attributes:        row.Attributes,
-				Specifications:    row.Specifications,
-				MetaTitle:         row.MetaTitle,
-				MetaDescription:   row.MetaDescription,
-				MetaKeywords:      row.MetaKeywords,
-				OgImage:           row.OgImage,
-				Brand:             row.Brand,
-				Tags:              row.Tags,
-				WarrantyInfo:      row.WarrantyInfo,
-				CreatedAt:         row.CreatedAt,
-				UpdatedAt:         row.UpdatedAt,
+				ID:   row.ID,
+				Name: row.Name,
+				Slug: row.Slug,
+				// SKU, Stock, LowStockThreshold moved to variants
+				Description: row.Description,
+				BasePrice:   row.BasePrice,
+				SalePrice:   row.SalePrice,
+				// SKU, Stock, LowStockThreshold moved to variants
+				IsFeatured:      row.IsFeatured,
+				IsActive:        row.IsActive,
+				Media:           row.Media,
+				Attributes:      row.Attributes,
+				Specifications:  row.Specifications,
+				MetaTitle:       row.MetaTitle,
+				MetaDescription: row.MetaDescription,
+				MetaKeywords:    row.MetaKeywords,
+				OgImage:         row.OgImage,
+				Brand:           row.Brand,
+				Tags:            row.Tags,
+				WarrantyInfo:    row.WarrantyInfo,
+				CreatedAt:       row.CreatedAt,
+				UpdatedAt:       row.UpdatedAt,
 			})
 		}
 	} else if filter.CategorySlug != "" {
@@ -624,111 +620,129 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 			result[i] = sqlcProductToDomain(p)
 		}
 
-		// 1. Batch Fetch Categories
-		catRows, err := r.queries.GetCategoryIDsForProducts(ctx, productIDs)
-		if err == nil && len(catRows) > 0 {
-			// Collect all Unique Category IDs
-			catIDSet := make(map[pgtype.UUID]struct{})
-			for _, row := range catRows {
-				if row.CategoryID.Valid {
-					catIDSet[row.CategoryID] = struct{}{}
-				}
-			}
-			uniqueCatIDs := make([]pgtype.UUID, 0, len(catIDSet))
-			for id := range catIDSet {
-				uniqueCatIDs = append(uniqueCatIDs, id)
-			}
-
-			// Fetch Category Details
-			cats, err := r.queries.GetCategoriesByIDs(ctx, uniqueCatIDs)
-			if err == nil {
-				// Map ID -> Domain Category
-				catMap := make(map[string]domain.Category)
-				for _, c := range cats {
-					catMap[uuidToString(c.ID)] = sqlcCategoryToDomain(c)
-				}
-
-				// Map ProductID -> []Category
-				prodCatMap := make(map[string][]domain.Category)
-				for _, row := range catRows {
-					if row.CategoryID.Valid {
-						pid := uuidToString(row.ProductID)
-						cid := uuidToString(row.CategoryID)
-						if c, ok := catMap[cid]; ok {
-							prodCatMap[pid] = append(prodCatMap[pid], c)
-						}
-					}
-				}
-
-				// Assign to Result
-				for i := range result {
-					if cs, ok := prodCatMap[result[i].ID]; ok {
-						result[i].Categories = cs
-					} else {
-						result[i].Categories = []domain.Category{}
-					}
-				}
-			}
-		} else {
-			// Initialize empty to avoid nil
-			for i := range result {
-				result[i].Categories = []domain.Category{}
-			}
-		}
-
-		// 2. Batch Fetch Collections
-		colRows, err := r.queries.GetCollectionIDsForProducts(ctx, productIDs)
-		if err == nil && len(colRows) > 0 {
-			// Collect all Unique Collection IDs
-			colIDSet := make(map[pgtype.UUID]struct{})
-			for _, row := range colRows {
-				if row.CollectionID.Valid {
-					colIDSet[row.CollectionID] = struct{}{}
-				}
-			}
-			uniqueColIDs := make([]pgtype.UUID, 0, len(colIDSet))
-			for id := range colIDSet {
-				uniqueColIDs = append(uniqueColIDs, id)
-			}
-
-			// Fetch Collection Details
-			cols, err := r.queries.GetCollectionsByIDs(ctx, uniqueColIDs)
-			if err == nil {
-				// Map ID -> Domain Collection
-				colMap := make(map[string]domain.Collection)
-				for _, c := range cols {
-					colMap[uuidToString(c.ID)] = sqlcCollectionToDomain(c)
-				}
-
-				// Map ProductID -> []Collection
-				prodColMap := make(map[string][]domain.Collection)
-				for _, row := range colRows {
-					if row.CollectionID.Valid {
-						pid := uuidToString(row.ProductID)
-						cid := uuidToString(row.CollectionID)
-						if c, ok := colMap[cid]; ok {
-							prodColMap[pid] = append(prodColMap[pid], c)
-						}
-					}
-				}
-
-				// Assign to Result
-				for i := range result {
-					if cs, ok := prodColMap[result[i].ID]; ok {
-						result[i].Collections = cs
-					} else {
-						result[i].Collections = []domain.Collection{}
-					}
-				}
-			}
-		} else {
-			// Initialize empty
-			for i := range result {
-				result[i].Collections = []domain.Collection{}
-			}
-		}
+		// Hydrate relations in parallel or sequence (Sequence for now, cheap DB calls)
+		r.enrichVariants(ctx, result, productIDs)
+		r.enrichCategories(ctx, result, productIDs)
+		r.enrichCollections(ctx, result, productIDs)
 	}
 	return result, count, nil
+}
+
+// --- Hydrators (L9 Standard: Composable & Reusable) ---
+
+func (r *productRepository) enrichVariants(ctx context.Context, products []domain.Product, productIDs []pgtype.UUID) {
+	variantRows, err := r.queries.GetVariantsByProductIDs(ctx, productIDs)
+	if err == nil && len(variantRows) > 0 {
+		prodVarMap := make(map[string][]domain.Variant)
+		for _, v := range variantRows {
+			if v.ProductID.Valid {
+				pid := uuidToString(v.ProductID)
+				prodVarMap[pid] = append(prodVarMap[pid], sqlcVariantToDomain(v))
+			}
+		}
+		for i := range products {
+			if vars, ok := prodVarMap[products[i].ID]; ok {
+				products[i].Variants = vars
+			} else {
+				products[i].Variants = []domain.Variant{}
+			}
+		}
+	} else {
+		for i := range products {
+			products[i].Variants = []domain.Variant{}
+		}
+	}
+}
+
+func (r *productRepository) enrichCategories(ctx context.Context, products []domain.Product, productIDs []pgtype.UUID) {
+	catRows, err := r.queries.GetCategoryIDsForProducts(ctx, productIDs)
+	if err == nil && len(catRows) > 0 {
+		catIDSet := make(map[pgtype.UUID]struct{})
+		for _, row := range catRows {
+			if row.CategoryID.Valid {
+				catIDSet[row.CategoryID] = struct{}{}
+			}
+		}
+		uniqueCatIDs := make([]pgtype.UUID, 0, len(catIDSet))
+		for id := range catIDSet {
+			uniqueCatIDs = append(uniqueCatIDs, id)
+		}
+
+		cats, err := r.queries.GetCategoriesByIDs(ctx, uniqueCatIDs)
+		if err == nil {
+			catMap := make(map[string]domain.Category)
+			for _, c := range cats {
+				catMap[uuidToString(c.ID)] = sqlcCategoryToDomain(c)
+			}
+			prodCatMap := make(map[string][]domain.Category)
+			for _, row := range catRows {
+				if row.CategoryID.Valid {
+					pid := uuidToString(row.ProductID)
+					cid := uuidToString(row.CategoryID)
+					if c, ok := catMap[cid]; ok {
+						prodCatMap[pid] = append(prodCatMap[pid], c)
+					}
+				}
+			}
+			for i := range products {
+				if cs, ok := prodCatMap[products[i].ID]; ok {
+					products[i].Categories = cs
+				} else {
+					products[i].Categories = []domain.Category{}
+				}
+			}
+			return
+		}
+	}
+	// Fallback/Empty
+	for i := range products {
+		products[i].Categories = []domain.Category{}
+	}
+}
+
+func (r *productRepository) enrichCollections(ctx context.Context, products []domain.Product, productIDs []pgtype.UUID) {
+	colRows, err := r.queries.GetCollectionIDsForProducts(ctx, productIDs)
+	if err == nil && len(colRows) > 0 {
+		colIDSet := make(map[pgtype.UUID]struct{})
+		for _, row := range colRows {
+			if row.CollectionID.Valid {
+				colIDSet[row.CollectionID] = struct{}{}
+			}
+		}
+		uniqueColIDs := make([]pgtype.UUID, 0, len(colIDSet))
+		for id := range colIDSet {
+			uniqueColIDs = append(uniqueColIDs, id)
+		}
+		cols, err := r.queries.GetCollectionsByIDs(ctx, uniqueColIDs)
+		if err == nil {
+			colMap := make(map[string]domain.Collection)
+			for _, c := range cols {
+				colMap[uuidToString(c.ID)] = sqlcCollectionToDomain(c)
+			}
+			prodColMap := make(map[string][]domain.Collection)
+			for _, row := range colRows {
+				if row.CollectionID.Valid {
+					pid := uuidToString(row.ProductID)
+					cid := uuidToString(row.CollectionID)
+					if c, ok := colMap[cid]; ok {
+						prodColMap[pid] = append(prodColMap[pid], c)
+					}
+				}
+			}
+			for i := range products {
+				if cs, ok := prodColMap[products[i].ID]; ok {
+					products[i].Collections = cs
+				} else {
+					products[i].Collections = []domain.Collection{}
+				}
+			}
+			return
+		}
+	}
+	// Fallback/Empty
+	for i := range products {
+		products[i].Collections = []domain.Collection{}
+	}
 }
 
 func (r *productRepository) GetProductBySlug(ctx context.Context, slug string) (*domain.Product, error) {
@@ -829,7 +843,7 @@ func (r *productRepository) GetProductByID(ctx context.Context, id string) (*dom
 	return &prod, nil
 }
 
-func (r *productRepository) UpdateStock(ctx context.Context, productID string, quantity int, reason, referenceID string) error {
+func (r *productRepository) UpdateStock(ctx context.Context, variantID string, quantity int, reason, referenceID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -838,23 +852,29 @@ func (r *productRepository) UpdateStock(ctx context.Context, productID string, q
 
 	qtx := r.queries.WithTx(tx)
 
-	// Update stock
-	rows, err := qtx.UpdateProductStock(ctx, sqlc.UpdateProductStockParams{
-		ID:    stringToUUID(productID),
+	// 1. Get Variant to confirm existence and get ProductID
+	targetUUID := stringToUUID(variantID)
+	v, err := qtx.GetVariantByID(ctx, targetUUID)
+	if err != nil {
+		return fmt.Errorf("variant not found: %s", variantID)
+	}
+
+	// 2. Update variant stock
+	rows, err := qtx.UpdateVariantStock(ctx, sqlc.UpdateVariantStockParams{
+		ID:    targetUUID,
 		Stock: int32(quantity),
 	})
 	if err != nil {
 		return err
 	}
 	if rows == 0 {
-		return fmt.Errorf("insufficient stock or product not found: %s", productID)
+		return fmt.Errorf("insufficient stock for variant: %s", variantID)
 	}
 
-	// Create log
-	var variantID pgtype.UUID
+	// 3. Create log
 	_, err = qtx.CreateInventoryLog(ctx, sqlc.CreateInventoryLogParams{
-		ProductID:    stringToUUID(productID),
-		VariantID:    variantID,
+		ProductID:    v.ProductID,
+		VariantID:    targetUUID,
 		ChangeAmount: int32(quantity),
 		Reason:       reason,
 		ReferenceID:  referenceID,
@@ -911,28 +931,34 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	// Marshal additional JSONB fields
 	warrantyBytes, _ := json.Marshal(product.WarrantyInfo)
 
-	created, err := r.queries.CreateProduct(ctx, sqlc.CreateProductParams{
-		Name:              product.Name,
-		Slug:              product.Slug,
-		Sku:               product.SKU,
-		Description:       strPtr(product.Description),
-		BasePrice:         float64ToNumeric(product.BasePrice),
-		SalePrice:         float64PtrToNumeric(product.SalePrice),
-		Stock:             int32(product.Stock),
-		StockStatus:       strPtr(product.StockStatus),
-		LowStockThreshold: int32(product.LowStockThreshold),
-		IsFeatured:        product.IsFeatured,
-		IsActive:          product.IsActive,
-		Media:             mediaBytes,
-		Attributes:        attrsBytes,
-		Specifications:    specsBytes,
-		MetaTitle:         strPtr(product.MetaTitle),
-		MetaDescription:   strPtr(product.MetaDescription),
-		MetaKeywords:      strPtr(product.Keywords),
-		OgImage:           strPtr(product.OGImage),
-		Brand:             strPtr(product.Brand),
-		Tags:              product.Tags,
-		WarrantyInfo:      warrantyBytes,
+	// Start transaction for atomic Product + Master Variant creation
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.queries.WithTx(tx)
+
+	created, err := qtx.CreateProduct(ctx, sqlc.CreateProductParams{
+		Name:            product.Name,
+		Slug:            product.Slug,
+		Description:     strPtr(product.Description),
+		BasePrice:       float64ToNumeric(product.BasePrice),
+		SalePrice:       float64PtrToNumeric(product.SalePrice),
+		StockStatus:     strPtr(product.StockStatus),
+		IsFeatured:      product.IsFeatured,
+		IsActive:        product.IsActive,
+		Media:           mediaBytes,
+		Attributes:      attrsBytes,
+		Specifications:  specsBytes,
+		MetaTitle:       strPtr(product.MetaTitle),
+		MetaDescription: strPtr(product.MetaDescription),
+		MetaKeywords:    strPtr(product.Keywords),
+		OgImage:         strPtr(product.OGImage),
+		Brand:           strPtr(product.Brand),
+		Tags:            product.Tags,
+		WarrantyInfo:    warrantyBytes,
 	})
 	if err != nil {
 		return err
@@ -942,9 +968,44 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 	product.CreatedAt = pgtimeToTime(created.CreatedAt)
 	product.UpdatedAt = pgtimeToTime(created.UpdatedAt)
 
+	// Add Master Variant if none exist
+	// This ensures Phase 6 SSOT is maintained
+	if len(product.Variants) == 0 {
+		_, err = qtx.CreateVariant(ctx, sqlc.CreateVariantParams{
+			ProductID:         created.ID,
+			Name:              "Default",
+			Stock:             0, // Initial stock handled by variant creation later if needed
+			LowStockThreshold: 5,
+			Attributes:        []byte("{}"),
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		for _, v := range product.Variants {
+			vAttrs, _ := json.Marshal(v.Attributes)
+			_, err = qtx.CreateVariant(ctx, sqlc.CreateVariantParams{
+				ProductID:         created.ID,
+				Name:              v.Name,
+				Stock:             int32(v.Stock),
+				Sku:               strPtr(v.SKU),
+				Price:             float64PtrToNumeric(v.Price),
+				SalePrice:         float64PtrToNumeric(v.SalePrice),
+				Images:            v.Images,
+				Weight:            float64PtrToNumeric(v.Weight),
+				Barcode:           strPtr(v.Barcode),
+				Attributes:        vAttrs,
+				LowStockThreshold: int32(v.LowStockThreshold),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	// Add categories
 	for _, cat := range product.Categories {
-		r.queries.AddProductCategory(ctx, sqlc.AddProductCategoryParams{
+		qtx.AddProductCategory(ctx, sqlc.AddProductCategoryParams{
 			ProductID:  created.ID,
 			CategoryID: stringToUUID(cat.ID),
 		})
@@ -952,119 +1013,146 @@ func (r *productRepository) CreateProduct(ctx context.Context, product *domain.P
 
 	// Add collections
 	for _, col := range product.Collections {
-		r.queries.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
+		qtx.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
 			ProductID:    created.ID,
 			CollectionID: stringToUUID(col.ID),
 		})
 	}
 
-	// Add variants
-	for _, v := range product.Variants {
-		vAttributes, _ := json.Marshal(v.Attributes)
-		vDimensions, _ := json.Marshal(v.Dimensions)
-
-		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
-			ProductID:  created.ID,
-			Name:       v.Name,
-			Stock:      int32(v.Stock),
-			Sku:        strPtr(v.SKU),
-			Attributes: vAttributes,
-			Price:      float64PtrToNumeric(v.Price),
-			SalePrice:  float64PtrToNumeric(v.SalePrice),
-			Images:     v.Images,
-			Weight:     float64PtrToNumeric(v.Weight),
-			Dimensions: vDimensions,
-			Barcode:    strPtr(v.Barcode),
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (r *productRepository) UpdateProduct(ctx context.Context, product *domain.Product) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.queries.WithTx(tx)
+
+	productUUID := stringToUUID(product.ID)
 	mediaBytes := mapImagesToMedia(product)
 	attrsBytes, _ := json.Marshal(product.Attributes)
 	specsBytes, _ := json.Marshal(product.Specs)
-
-	// Marshal additional JSONB fields
 	warrantyBytes, _ := json.Marshal(product.WarrantyInfo)
 
-	_, err := r.queries.UpdateProduct(ctx, sqlc.UpdateProductParams{
-		ID:                stringToUUID(product.ID),
-		Name:              product.Name,
-		Slug:              product.Slug,
-		Description:       strPtr(product.Description),
-		BasePrice:         float64ToNumeric(product.BasePrice),
-		SalePrice:         float64PtrToNumeric(product.SalePrice),
-		Stock:             int32(product.Stock),
-		StockStatus:       strPtr(product.StockStatus),
-		LowStockThreshold: int32(product.LowStockThreshold),
-		IsFeatured:        product.IsFeatured,
-		IsActive:          product.IsActive,
-		Media:             mediaBytes,
-		Attributes:        attrsBytes,
-		Specifications:    specsBytes,
-		MetaTitle:         strPtr(product.MetaTitle),
-		MetaDescription:   strPtr(product.MetaDescription),
-		MetaKeywords:      strPtr(product.Keywords),
-		OgImage:           strPtr(product.OGImage),
-		Brand:             strPtr(product.Brand),
-		Tags:              product.Tags,
-		WarrantyInfo:      warrantyBytes,
+	_, err = qtx.UpdateProduct(ctx, sqlc.UpdateProductParams{
+		ID:              productUUID,
+		Name:            product.Name,
+		Slug:            product.Slug,
+		Description:     strPtr(product.Description),
+		BasePrice:       float64ToNumeric(product.BasePrice),
+		SalePrice:       float64PtrToNumeric(product.SalePrice),
+		StockStatus:     strPtr(product.StockStatus),
+		IsFeatured:      product.IsFeatured,
+		IsActive:        product.IsActive,
+		Media:           mediaBytes,
+		Attributes:      attrsBytes,
+		Specifications:  specsBytes,
+		MetaTitle:       strPtr(product.MetaTitle),
+		MetaDescription: strPtr(product.MetaDescription),
+		MetaKeywords:    strPtr(product.Keywords),
+		OgImage:         strPtr(product.OGImage),
+		Brand:           strPtr(product.Brand),
+		Tags:            product.Tags,
+		WarrantyInfo:    warrantyBytes,
 	})
 	if err != nil {
 		return err
 	}
 
 	// Update categories
-	productUUID := stringToUUID(product.ID)
-	r.queries.ClearProductCategories(ctx, productUUID)
+	qtx.ClearProductCategories(ctx, productUUID)
 	for _, cat := range product.Categories {
-		r.queries.AddProductCategory(ctx, sqlc.AddProductCategoryParams{
+		qtx.AddProductCategory(ctx, sqlc.AddProductCategoryParams{
 			ProductID:  productUUID,
 			CategoryID: stringToUUID(cat.ID),
 		})
 	}
 
 	// Update collections
-	r.queries.ClearProductCollections(ctx, productUUID)
+	qtx.ClearProductCollections(ctx, productUUID)
 	for _, col := range product.Collections {
-		r.queries.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
+		qtx.AddProductCollection(ctx, sqlc.AddProductCollectionParams{
 			ProductID:    productUUID,
 			CollectionID: stringToUUID(col.ID),
 		})
 	}
 
-	// Update variants (Replace Strategy: Delete all, Re-create)
-	if err := r.queries.DeleteVariantsByProductID(ctx, productUUID); err != nil {
+	// Update variants (Smart Update Strategy: Sync)
+	// 1. Fetch existing variants
+	existingVariants, err := qtx.GetVariantsByProductID(ctx, productUUID)
+	if err != nil {
 		return err
 	}
+	existingVarMap := make(map[string]struct{})
+	for _, v := range existingVariants {
+		existingVarMap[uuidToString(v.ID)] = struct{}{}
+	}
+	// Track processed IDs to identify deletions
+	processedIDs := make(map[string]struct{})
+
 	for _, v := range product.Variants {
 		vAttributes, _ := json.Marshal(v.Attributes)
 		vDimensions, _ := json.Marshal(v.Dimensions)
 
-		_, err := r.queries.CreateVariant(ctx, sqlc.CreateVariantParams{
-			ProductID:  productUUID,
-			Name:       v.Name,
-			Stock:      int32(v.Stock),
-			Sku:        strPtr(v.SKU),
-			Attributes: vAttributes,
-			Price:      float64PtrToNumeric(v.Price),
-			SalePrice:  float64PtrToNumeric(v.SalePrice),
-			Images:     v.Images,
-			Weight:     float64PtrToNumeric(v.Weight),
-			Dimensions: vDimensions,
-			Barcode:    strPtr(v.Barcode),
+		if v.ID != "" {
+			// Check if it exists in DB
+			if _, exists := existingVarMap[v.ID]; exists {
+				// UPDATE
+				_, err := qtx.UpdateVariant(ctx, sqlc.UpdateVariantParams{
+					ID:                stringToUUID(v.ID),
+					Name:              v.Name,
+					Stock:             int32(v.Stock),
+					Sku:               strPtr(v.SKU),
+					Attributes:        vAttributes,
+					Price:             float64PtrToNumeric(v.Price),
+					SalePrice:         float64PtrToNumeric(v.SalePrice),
+					Images:            v.Images,
+					Weight:            float64PtrToNumeric(v.Weight),
+					Dimensions:        vDimensions,
+					Barcode:           strPtr(v.Barcode),
+					LowStockThreshold: int32(v.LowStockThreshold),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to update variant %s: %w", v.ID, err)
+				}
+				processedIDs[v.ID] = struct{}{}
+				continue
+			}
+		}
+
+		// CREATE (if ID is empty or not found in DB)
+		_, err = qtx.CreateVariant(ctx, sqlc.CreateVariantParams{
+			ProductID:         productUUID,
+			Name:              v.Name,
+			Stock:             int32(v.Stock),
+			Sku:               strPtr(v.SKU),
+			Attributes:        vAttributes,
+			Price:             float64PtrToNumeric(v.Price),
+			SalePrice:         float64PtrToNumeric(v.SalePrice),
+			Images:            v.Images,
+			Weight:            float64PtrToNumeric(v.Weight),
+			Dimensions:        vDimensions,
+			Barcode:           strPtr(v.Barcode),
+			LowStockThreshold: int32(v.LowStockThreshold),
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create variant %s: %w", v.Name, err)
 		}
 	}
 
-	return nil
+	// DELETE orphans (variants in DB but not in payload)
+	for id := range existingVarMap {
+		if _, processed := processedIDs[id]; !processed {
+			if err := qtx.DeleteVariant(ctx, stringToUUID(id)); err != nil {
+				return fmt.Errorf("failed to delete orphan variant %s: %w", id, err)
+			}
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *productRepository) UpdateProductStatus(ctx context.Context, id string, isActive bool) error {

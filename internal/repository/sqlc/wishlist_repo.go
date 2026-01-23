@@ -69,13 +69,11 @@ func (r *wishlistRepository) GetWishlistItems(ctx context.Context, wishlistID st
 				Slug:      row.Slug,
 				BasePrice: numericToFloat64(row.BasePrice),
 				SalePrice: numericToFloat64Ptr(row.SalePrice),
-				Stock:     int(row.Stock),
 			},
 		}
 
-		if row.StockStatus != nil {
-			item.Product.StockStatus = *row.StockStatus
-		}
+		// TotalStock available in row.TotalStock if needed for UI, but domain.Product doesn't hold it.
+		// We could add it to WishlistItem if required.
 
 		if len(row.Media) > 0 {
 			item.Product.Media = domain.RawJSON(row.Media)
@@ -84,7 +82,7 @@ func (r *wishlistRepository) GetWishlistItems(ctx context.Context, wishlistID st
 				item.Product.Images = images
 			}
 		}
-		
+
 		items = append(items, item)
 	}
 	return items, nil

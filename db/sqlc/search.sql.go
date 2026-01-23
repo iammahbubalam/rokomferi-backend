@@ -31,7 +31,7 @@ func (q *Queries) CountSearchProducts(ctx context.Context, arg CountSearchProduc
 }
 
 const searchProducts = `-- name: SearchProducts :many
-SELECT id, name, slug, sku, description, base_price, sale_price, stock, stock_status, low_stock_threshold, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info,
+SELECT id, name, slug, description, base_price, sale_price, stock_status, is_featured, is_active, media, attributes, specifications, created_at, updated_at, search_vector, meta_title, meta_description, meta_keywords, og_image, brand, tags, warranty_info,
        ts_rank(search_vector, websearch_to_tsquery('english', $3)) as rank
 FROM products
 WHERE search_vector @@ websearch_to_tsquery('english', $3)
@@ -48,32 +48,29 @@ type SearchProductsParams struct {
 }
 
 type SearchProductsRow struct {
-	ID                pgtype.UUID      `json:"id"`
-	Name              string           `json:"name"`
-	Slug              string           `json:"slug"`
-	Sku               string           `json:"sku"`
-	Description       *string          `json:"description"`
-	BasePrice         pgtype.Numeric   `json:"base_price"`
-	SalePrice         pgtype.Numeric   `json:"sale_price"`
-	Stock             int32            `json:"stock"`
-	StockStatus       *string          `json:"stock_status"`
-	LowStockThreshold int32            `json:"low_stock_threshold"`
-	IsFeatured        bool             `json:"is_featured"`
-	IsActive          bool             `json:"is_active"`
-	Media             []byte           `json:"media"`
-	Attributes        []byte           `json:"attributes"`
-	Specifications    []byte           `json:"specifications"`
-	CreatedAt         pgtype.Timestamp `json:"created_at"`
-	UpdatedAt         pgtype.Timestamp `json:"updated_at"`
-	SearchVector      interface{}      `json:"search_vector"`
-	MetaTitle         *string          `json:"meta_title"`
-	MetaDescription   *string          `json:"meta_description"`
-	MetaKeywords      *string          `json:"meta_keywords"`
-	OgImage           *string          `json:"og_image"`
-	Brand             *string          `json:"brand"`
-	Tags              []string         `json:"tags"`
-	WarrantyInfo      []byte           `json:"warranty_info"`
-	Rank              float32          `json:"rank"`
+	ID              pgtype.UUID      `json:"id"`
+	Name            string           `json:"name"`
+	Slug            string           `json:"slug"`
+	Description     *string          `json:"description"`
+	BasePrice       pgtype.Numeric   `json:"base_price"`
+	SalePrice       pgtype.Numeric   `json:"sale_price"`
+	StockStatus     *string          `json:"stock_status"`
+	IsFeatured      bool             `json:"is_featured"`
+	IsActive        bool             `json:"is_active"`
+	Media           []byte           `json:"media"`
+	Attributes      []byte           `json:"attributes"`
+	Specifications  []byte           `json:"specifications"`
+	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
+	SearchVector    interface{}      `json:"search_vector"`
+	MetaTitle       *string          `json:"meta_title"`
+	MetaDescription *string          `json:"meta_description"`
+	MetaKeywords    *string          `json:"meta_keywords"`
+	OgImage         *string          `json:"og_image"`
+	Brand           *string          `json:"brand"`
+	Tags            []string         `json:"tags"`
+	WarrantyInfo    []byte           `json:"warranty_info"`
+	Rank            float32          `json:"rank"`
 }
 
 func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) ([]SearchProductsRow, error) {
@@ -94,13 +91,10 @@ func (q *Queries) SearchProducts(ctx context.Context, arg SearchProductsParams) 
 			&i.ID,
 			&i.Name,
 			&i.Slug,
-			&i.Sku,
 			&i.Description,
 			&i.BasePrice,
 			&i.SalePrice,
-			&i.Stock,
 			&i.StockStatus,
-			&i.LowStockThreshold,
 			&i.IsFeatured,
 			&i.IsActive,
 			&i.Media,

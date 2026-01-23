@@ -156,19 +156,20 @@ func (q *Queries) GetDailySales(ctx context.Context, arg GetDailySalesParams) ([
 
 const getDeadStockProducts = `-- name: GetDeadStockProducts :many
 SELECT 
-  p.id, p.name, p.slug, p.stock, p.base_price, p.sku, p.media,
+  p.id as product_id, p.name as product_name, p.slug, v.id as variant_id, v.name as variant_name, v.stock, v.sku, p.base_price, p.media,
   p.created_at
-FROM products p
-WHERE p.id NOT IN (
-  SELECT DISTINCT oi.product_id 
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE v.id NOT IN (
+  SELECT DISTINCT oi.variant_id 
   FROM order_items oi
   JOIN orders o ON oi.order_id = o.id
   WHERE o.created_at >= NOW() - ($1::int || ' days')::interval
     AND o.status NOT IN ('cancelled', 'returned')
 )
-AND p.stock > 0
+AND v.stock > 0
 AND p.is_active = true
-ORDER BY p.stock DESC, p.created_at ASC
+ORDER BY v.stock DESC, p.created_at ASC
 LIMIT $2::int
 `
 
@@ -178,17 +179,19 @@ type GetDeadStockProductsParams struct {
 }
 
 type GetDeadStockProductsRow struct {
-	ID        pgtype.UUID      `json:"id"`
-	Name      string           `json:"name"`
-	Slug      string           `json:"slug"`
-	Stock     int32            `json:"stock"`
-	BasePrice pgtype.Numeric   `json:"base_price"`
-	Sku       string           `json:"sku"`
-	Media     []byte           `json:"media"`
-	CreatedAt pgtype.Timestamp `json:"created_at"`
+	ProductID   pgtype.UUID      `json:"product_id"`
+	ProductName string           `json:"product_name"`
+	Slug        string           `json:"slug"`
+	VariantID   pgtype.UUID      `json:"variant_id"`
+	VariantName string           `json:"variant_name"`
+	Stock       int32            `json:"stock"`
+	Sku         *string          `json:"sku"`
+	BasePrice   pgtype.Numeric   `json:"base_price"`
+	Media       []byte           `json:"media"`
+	CreatedAt   pgtype.Timestamp `json:"created_at"`
 }
 
-// Products with no sales in X days (parameterized)
+// Variants with no sales in X days (parameterized)
 func (q *Queries) GetDeadStockProducts(ctx context.Context, arg GetDeadStockProductsParams) ([]GetDeadStockProductsRow, error) {
 	rows, err := q.db.Query(ctx, getDeadStockProducts, arg.Days, arg.LimitCount)
 	if err != nil {
@@ -199,12 +202,14 @@ func (q *Queries) GetDeadStockProducts(ctx context.Context, arg GetDeadStockProd
 	for rows.Next() {
 		var i GetDeadStockProductsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
+			&i.ProductID,
+			&i.ProductName,
 			&i.Slug,
+			&i.VariantID,
+			&i.VariantName,
 			&i.Stock,
-			&i.BasePrice,
 			&i.Sku,
+			&i.BasePrice,
 			&i.Media,
 			&i.CreatedAt,
 		); err != nil {
@@ -221,12 +226,13 @@ func (q *Queries) GetDeadStockProducts(ctx context.Context, arg GetDeadStockProd
 const getLowStockProducts = `-- name: GetLowStockProducts :many
 
 SELECT 
-  id, name, slug, stock, base_price, sale_price, sku, media, stock_status
-FROM products
-WHERE stock <= $1::int 
-  AND stock > 0
-  AND is_active = true
-ORDER BY stock ASC
+  p.id as product_id, p.name as product_name, p.slug, v.id as variant_id, v.name as variant_name, v.stock, v.sku, p.base_price, p.sale_price, p.media
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE v.stock <= $1::int 
+  AND v.stock > 0
+  AND p.is_active = true
+ORDER BY v.stock ASC
 LIMIT $2::int
 `
 
@@ -236,20 +242,21 @@ type GetLowStockProductsParams struct {
 }
 
 type GetLowStockProductsRow struct {
-	ID          pgtype.UUID    `json:"id"`
-	Name        string         `json:"name"`
+	ProductID   pgtype.UUID    `json:"product_id"`
+	ProductName string         `json:"product_name"`
 	Slug        string         `json:"slug"`
+	VariantID   pgtype.UUID    `json:"variant_id"`
+	VariantName string         `json:"variant_name"`
 	Stock       int32          `json:"stock"`
+	Sku         *string        `json:"sku"`
 	BasePrice   pgtype.Numeric `json:"base_price"`
 	SalePrice   pgtype.Numeric `json:"sale_price"`
-	Sku         string         `json:"sku"`
 	Media       []byte         `json:"media"`
-	StockStatus *string        `json:"stock_status"`
 }
 
 // L9 Dashboard/Stats Queries: Fully Parameterized (Zero Hardcoded Values)
 // All date ranges, thresholds, limits controlled by frontend via query params
-// Products below threshold (parameterized - no hardcoded limit)
+// Variants below threshold (parameterized - no hardcoded limit)
 func (q *Queries) GetLowStockProducts(ctx context.Context, arg GetLowStockProductsParams) ([]GetLowStockProductsRow, error) {
 	rows, err := q.db.Query(ctx, getLowStockProducts, arg.Threshold, arg.LimitCount)
 	if err != nil {
@@ -260,15 +267,16 @@ func (q *Queries) GetLowStockProducts(ctx context.Context, arg GetLowStockProduc
 	for rows.Next() {
 		var i GetLowStockProductsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
+			&i.ProductID,
+			&i.ProductName,
 			&i.Slug,
+			&i.VariantID,
+			&i.VariantName,
 			&i.Stock,
+			&i.Sku,
 			&i.BasePrice,
 			&i.SalePrice,
-			&i.Sku,
 			&i.Media,
-			&i.StockStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -319,7 +327,7 @@ func (q *Queries) GetRevenueKPIs(ctx context.Context, arg GetRevenueKPIsParams) 
 
 const getTopSellingProducts = `-- name: GetTopSellingProducts :many
 SELECT 
-  p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media,
+  p.id, p.name, p.slug, p.base_price, p.sale_price, p.media,
   SUM(oi.quantity)::bigint as total_sold,
   SUM(oi.quantity * oi.price)::numeric as total_revenue
 FROM order_items oi
@@ -328,7 +336,7 @@ JOIN orders o ON o.id = oi.order_id
 WHERE o.created_at >= $1::timestamp
   AND o.created_at <= $2::timestamp
   AND o.status NOT IN ('cancelled', 'returned')
-GROUP BY p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media
+GROUP BY p.id, p.name, p.slug, p.base_price, p.sale_price, p.media
 ORDER BY total_sold DESC
 LIMIT $3::int
 `
@@ -343,7 +351,6 @@ type GetTopSellingProductsRow struct {
 	ID           pgtype.UUID    `json:"id"`
 	Name         string         `json:"name"`
 	Slug         string         `json:"slug"`
-	Sku          string         `json:"sku"`
 	BasePrice    pgtype.Numeric `json:"base_price"`
 	SalePrice    pgtype.Numeric `json:"sale_price"`
 	Media        []byte         `json:"media"`
@@ -365,7 +372,6 @@ func (q *Queries) GetTopSellingProducts(ctx context.Context, arg GetTopSellingPr
 			&i.ID,
 			&i.Name,
 			&i.Slug,
-			&i.Sku,
 			&i.BasePrice,
 			&i.SalePrice,
 			&i.Media,

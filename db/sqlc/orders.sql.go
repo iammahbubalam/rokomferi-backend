@@ -240,9 +240,10 @@ func (q *Queries) GetCartItemByProductID(ctx context.Context, arg GetCartItemByP
 }
 
 const getCartItems = `-- name: GetCartItems :many
-SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity, p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
+SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity, p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
+JOIN variants v ON v.id = ci.variant_id
 WHERE ci.cart_id = $1
 `
 
@@ -258,6 +259,7 @@ type GetCartItemsRow struct {
 	SalePrice pgtype.Numeric `json:"sale_price"`
 	Media     []byte         `json:"media"`
 	Stock     int32          `json:"stock"`
+	Sku       *string        `json:"sku"`
 }
 
 func (q *Queries) GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCartItemsRow, error) {
@@ -281,6 +283,7 @@ func (q *Queries) GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCa
 			&i.SalePrice,
 			&i.Media,
 			&i.Stock,
+			&i.Sku,
 		); err != nil {
 			return nil, err
 		}
@@ -305,26 +308,29 @@ SELECT
     p.base_price,
     p.sale_price,
     p.media,
-    p.stock
+    v.stock,
+    v.sku as variant_sku
 FROM carts c
 LEFT JOIN cart_items ci ON c.id = ci.cart_id
 LEFT JOIN products p ON ci.product_id = p.id
+LEFT JOIN variants v ON ci.variant_id = v.id
 WHERE c.user_id = $1
 `
 
 type GetCartWithItemsRow struct {
-	CartID    pgtype.UUID    `json:"cart_id"`
-	UserID    pgtype.UUID    `json:"user_id"`
-	ItemID    pgtype.UUID    `json:"item_id"`
-	ProductID pgtype.UUID    `json:"product_id"`
-	VariantID pgtype.UUID    `json:"variant_id"`
-	Quantity  *int32         `json:"quantity"`
-	Name      *string        `json:"name"`
-	Slug      *string        `json:"slug"`
-	BasePrice pgtype.Numeric `json:"base_price"`
-	SalePrice pgtype.Numeric `json:"sale_price"`
-	Media     []byte         `json:"media"`
-	Stock     *int32         `json:"stock"`
+	CartID     pgtype.UUID    `json:"cart_id"`
+	UserID     pgtype.UUID    `json:"user_id"`
+	ItemID     pgtype.UUID    `json:"item_id"`
+	ProductID  pgtype.UUID    `json:"product_id"`
+	VariantID  pgtype.UUID    `json:"variant_id"`
+	Quantity   *int32         `json:"quantity"`
+	Name       *string        `json:"name"`
+	Slug       *string        `json:"slug"`
+	BasePrice  pgtype.Numeric `json:"base_price"`
+	SalePrice  pgtype.Numeric `json:"sale_price"`
+	Media      []byte         `json:"media"`
+	Stock      *int32         `json:"stock"`
+	VariantSku *string        `json:"variant_sku"`
 }
 
 func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]GetCartWithItemsRow, error) {
@@ -349,6 +355,7 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 			&i.SalePrice,
 			&i.Media,
 			&i.Stock,
+			&i.VariantSku,
 		); err != nil {
 			return nil, err
 		}
@@ -507,17 +514,17 @@ WITH
     SELECT id FROM carts WHERE user_id = $1
   ),
   stock_valid AS (
-    SELECT p.id FROM products p
-    WHERE p.id = $2
-      AND p.stock >= $3
+    SELECT v.id FROM variants v
+    JOIN products p ON p.id = v.product_id
+    WHERE v.id = $2
+      AND v.stock >= $3
       AND p.is_active = TRUE
-      AND (p.stock_status IS NULL OR p.stock_status != 'out_of_stock')
   ),
   existing_item AS (
     SELECT ci.id FROM cart_items ci
     JOIN user_cart uc ON ci.cart_id = uc.id
-    WHERE ci.product_id = $2
-      AND (ci.variant_id IS NOT DISTINCT FROM $4)
+    WHERE ci.product_id = $4
+      AND (ci.variant_id IS NOT DISTINCT FROM $2)
   ),
   updated AS (
     UPDATE cart_items SET quantity = $3
@@ -526,7 +533,7 @@ WITH
   ),
   inserted AS (
     INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
-    SELECT uc.id, $2, $4, $3
+    SELECT uc.id, $4, $2, $3
     FROM user_cart uc
     CROSS JOIN stock_valid sv
     WHERE NOT EXISTS (SELECT 1 FROM existing_item)
@@ -538,40 +545,42 @@ WITH
     SELECT cart_id FROM inserted
   )
 SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
-       p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
+       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
+JOIN variants v ON v.id = ci.variant_id
 WHERE ci.cart_id = (SELECT cart_id FROM affected_cart LIMIT 1)
 `
 
 type UpsertCartItemAtomicParams struct {
 	UserID    pgtype.UUID `json:"user_id"`
-	ProductID pgtype.UUID `json:"product_id"`
-	Quantity  int32       `json:"quantity"`
 	VariantID pgtype.UUID `json:"variant_id"`
+	Quantity  int32       `json:"quantity"`
+	ProductID pgtype.UUID `json:"product_id"`
 }
 
 type UpsertCartItemAtomicRow struct {
-	ID        pgtype.UUID    `json:"id"`
-	CartID    pgtype.UUID    `json:"cart_id"`
-	ProductID pgtype.UUID    `json:"product_id"`
-	VariantID pgtype.UUID    `json:"variant_id"`
-	Quantity  int32          `json:"quantity"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug"`
-	BasePrice pgtype.Numeric `json:"base_price"`
-	SalePrice pgtype.Numeric `json:"sale_price"`
-	Media     []byte         `json:"media"`
-	Stock     int32          `json:"stock"`
+	ID         pgtype.UUID    `json:"id"`
+	CartID     pgtype.UUID    `json:"cart_id"`
+	ProductID  pgtype.UUID    `json:"product_id"`
+	VariantID  pgtype.UUID    `json:"variant_id"`
+	Quantity   int32          `json:"quantity"`
+	Name       string         `json:"name"`
+	Slug       string         `json:"slug"`
+	BasePrice  pgtype.Numeric `json:"base_price"`
+	SalePrice  pgtype.Numeric `json:"sale_price"`
+	Media      []byte         `json:"media"`
+	Stock      int32          `json:"stock"`
+	VariantSku *string        `json:"variant_sku"`
 }
 
 // L9 FIX: Simplified atomic upsert without expression-based conflict target
 func (q *Queries) UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error) {
 	rows, err := q.db.Query(ctx, upsertCartItemAtomic,
 		arg.UserID,
-		arg.ProductID,
-		arg.Quantity,
 		arg.VariantID,
+		arg.Quantity,
+		arg.ProductID,
 	)
 	if err != nil {
 		return nil, err
@@ -592,6 +601,7 @@ func (q *Queries) UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAt
 			&i.SalePrice,
 			&i.Media,
 			&i.Stock,
+			&i.VariantSku,
 		); err != nil {
 			return nil, err
 		}

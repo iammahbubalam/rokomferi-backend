@@ -7,19 +7,25 @@ SELECT * FROM variants WHERE id = $1;
 -- name: CreateVariant :one
 INSERT INTO variants (
     product_id, name, stock, sku, 
-    attributes, price, sale_price, images, weight, dimensions, barcode
+    attributes, price, sale_price, images, weight, dimensions, barcode, 
+    low_stock_threshold
 ) VALUES (
     $1, $2, $3, $4, 
-    $5, $6, $7, $8, $9, $10, $11
+    $5, $6, $7, $8, $9, $10, $11,
+    $12
 ) RETURNING *;
 
 -- name: UpdateVariant :one
 UPDATE variants 
 SET name = $2, stock = $3, sku = $4,
     attributes = $5, price = $6, sale_price = $7, 
-    images = $8, weight = $9, dimensions = $10, barcode = $11
+    images = $8, weight = $9, dimensions = $10, barcode = $11,
+    low_stock_threshold = $12
 WHERE id = $1 
 RETURNING *;
+
+-- name: UpdateVariantStock :execrows
+UPDATE variants SET stock = stock + $2 WHERE id = $1 AND stock + $2 >= 0;
 
 -- name: DeleteVariant :exec
 DELETE FROM variants WHERE id = $1;
@@ -40,3 +46,6 @@ LIMIT $2 OFFSET $3;
 
 -- name: CountInventoryLogs :one
 SELECT COUNT(*) FROM inventory_logs WHERE ($1::uuid IS NULL OR product_id = $1);
+
+-- name: GetVariantsByProductIDs :many
+SELECT * FROM variants WHERE product_id = ANY($1::uuid[]);

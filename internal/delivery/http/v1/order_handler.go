@@ -41,8 +41,9 @@ func (h *OrderHandler) GetCart(w http.ResponseWriter, r *http.Request) {
 }
 
 type addToCartReq struct {
-	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
+	ProductID string  `json:"productId"`
+	VariantID *string `json:"variantId"`
+	Quantity  int     `json:"quantity"`
 }
 
 func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +68,7 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cart, err := h.orderUC.AddToCart(r.Context(), user.ID, req.ProductID, req.Quantity)
+	cart, err := h.orderUC.AddToCart(r.Context(), user.ID, req.ProductID, req.VariantID, req.Quantity)
 	if err != nil {
 		slog.Error("AddToCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -107,15 +108,16 @@ func (h *OrderHandler) UpdateCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ProductID string `json:"productId"`
-		Quantity  int    `json:"quantity"`
+		ProductID string  `json:"productId"`
+		VariantID *string `json:"variantId"`
+		Quantity  int     `json:"quantity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	cart, err := h.orderUC.UpdateCartItemQuantity(r.Context(), user.ID, req.ProductID, req.Quantity)
+	cart, err := h.orderUC.UpdateCartItemQuantity(r.Context(), user.ID, req.ProductID, req.VariantID, req.Quantity)
 	if err != nil {
 		slog.Error("UpdateCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
 

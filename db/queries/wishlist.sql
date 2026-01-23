@@ -23,11 +23,12 @@ SELECT
     p.base_price,
     p.sale_price,
     p.media,
-    p.stock,
-    p.stock_status
+    COALESCE(SUM(v.stock), 0)::int as total_stock
 FROM wishlist_items wi
 JOIN products p ON wi.product_id = p.id
+LEFT JOIN variants v ON v.product_id = p.id
 WHERE wi.wishlist_id = $1
+GROUP BY wi.id, wi.product_id, wi.created_at, p.name, p.slug, p.base_price, p.sale_price, p.media
 ORDER BY wi.created_at DESC;
 
 -- name: CheckItemInWishlist :one

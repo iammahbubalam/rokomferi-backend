@@ -32,8 +32,8 @@ func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Pro
 		product.Slug = utils.GenerateSlug(product.Name)
 	}
 	// 2. Set Defaults
-	if product.SKU == "" {
-		return fmt.Errorf("SKU is required")
+	if len(product.Variants) == 0 {
+		// Valid case: standard product, repo will create Master Variant
 	}
 	product.CreatedAt = time.Now()
 	product.UpdatedAt = time.Now()
@@ -62,9 +62,9 @@ func (uc *CatalogUsecase) DeleteProduct(ctx context.Context, id string) error {
 	return uc.repo.DeleteProduct(ctx, id)
 }
 
-func (uc *CatalogUsecase) AdjustStock(ctx context.Context, productID string, changeAmount int, reason, referenceID string) error {
+func (uc *CatalogUsecase) AdjustStock(ctx context.Context, variantID string, changeAmount int, reason, referenceID string) error {
 	uc.invalidateStatsCache()
-	return uc.repo.UpdateStock(ctx, productID, changeAmount, reason, referenceID)
+	return uc.repo.UpdateStock(ctx, variantID, changeAmount, reason, referenceID)
 }
 
 func (uc *CatalogUsecase) GetInventoryLogs(ctx context.Context, productID string, limit, offset int) ([]domain.InventoryLog, int64, error) {

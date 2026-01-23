@@ -48,7 +48,6 @@ func sqlcCartToDomain(c sqlc.Cart, items []sqlc.GetCartItemsRow) *domain.Cart {
 				Slug:      item.Slug,
 				BasePrice: numericToFloat64(item.BasePrice),
 				SalePrice: numericToFloat64Ptr(item.SalePrice),
-				Stock:     int(item.Stock),
 			},
 		}
 		if item.VariantID.Valid {
@@ -167,7 +166,6 @@ func (r *orderRepository) GetCartWithItems(ctx context.Context, userID string) (
 				Slug:      *row.Slug,
 				BasePrice: numericToFloat64(row.BasePrice),
 				SalePrice: numericToFloat64Ptr(row.SalePrice),
-				Stock:     int(*row.Stock),
 			},
 		}
 
@@ -217,7 +215,6 @@ func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, prod
 				Slug:      row.Slug,
 				BasePrice: numericToFloat64(row.BasePrice),
 				SalePrice: numericToFloat64Ptr(row.SalePrice),
-				Stock:     int(row.Stock),
 			},
 		}
 		if row.VariantID.Valid {

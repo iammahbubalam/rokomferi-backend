@@ -62,21 +62,17 @@ func mapSearchRowToProduct(row sqlc.SearchProductsRow) domain.Product {
 	}
 
 	return domain.Product{
-		ID:                uuidToString(row.ID),
-		Name:              row.Name,
-		Slug:              row.Slug,
-		SKU:               row.Sku,
-		Description:       ptrString(row.Description),
-		BasePrice:         numericToFloat64(row.BasePrice),
-		SalePrice:         numericToFloat64Ptr(row.SalePrice),
-		Stock:             int(row.Stock),
-		StockStatus:       ptrString(row.StockStatus),
-		LowStockThreshold: int(row.LowStockThreshold),
-		IsFeatured:        row.IsFeatured,
-		IsActive:          row.IsActive,
-		Images:            images,
-		CreatedAt:         pgtimeToTime(row.CreatedAt),
-		UpdatedAt:         pgtimeToTime(row.UpdatedAt),
+		ID:        uuidToString(row.ID),
+		Name:      row.Name,
+		Slug:      row.Slug,
+		BasePrice: numericToFloat64(row.BasePrice),
+		SalePrice: numericToFloat64Ptr(row.SalePrice),
+		// Stock & SKU moved to variants
+		IsFeatured: row.IsFeatured,
+		IsActive:   row.IsActive,
+		Images:     images,
+		CreatedAt:  pgtimeToTime(row.CreatedAt),
+		UpdatedAt:  pgtimeToTime(row.UpdatedAt),
 	}
 }
 

@@ -40,13 +40,10 @@ type Product struct {
 	ID                string       `json:"id"`
 	Name              string       `json:"name"`
 	Slug              string       `json:"slug"`
-	SKU               string       `json:"sku"` // Robust Inventory
 	Description       string       `json:"description"`
 	BasePrice         float64      `json:"basePrice"`
 	SalePrice         *float64     `json:"salePrice"`
-	Stock             int          `json:"stock"` // Main inventory
 	StockStatus       string       `json:"stockStatus"`
-	LowStockThreshold int          `json:"lowStockThreshold"`
 	IsFeatured        bool         `json:"isFeatured"`
 	IsActive          bool         `json:"isActive"`
 	Media             RawJSON      `json:"media"`
@@ -94,13 +91,14 @@ type Variant struct {
 	SKU       string `json:"sku"` // Optional: Variant specific SKU
 
 	// L9 Fields
-	Attributes JSONB    `json:"attributes"`
-	Price      *float64 `json:"price"` // Override base price
-	SalePrice  *float64 `json:"salePrice"`
-	Images     []string `json:"images"`
-	Weight     *float64 `json:"weight"`
-	Dimensions JSONB    `json:"dimensions"`
-	Barcode    string   `json:"barcode"`
+	Attributes        JSONB    `json:"attributes"`
+	Price             *float64 `json:"price"` // Override base price
+	SalePrice         *float64 `json:"salePrice"`
+	Images            []string `json:"images"`
+	Weight            *float64 `json:"weight"`
+	Dimensions        JSONB    `json:"dimensions"`
+	Barcode           string   `json:"barcode"`
+	LowStockThreshold int      `json:"lowStockThreshold"`
 }
 
 type ProductStats struct {
@@ -148,7 +146,7 @@ type ProductRepository interface {
 	GetProducts(ctx context.Context, filter ProductFilter) ([]Product, int64, error)
 	GetProductBySlug(ctx context.Context, slug string) (*Product, error)
 	GetProductByID(ctx context.Context, id string) (*Product, error)
-	UpdateStock(ctx context.Context, productID string, quantity int, reason, referenceID string) error
+	UpdateStock(ctx context.Context, variantID string, quantity int, reason, referenceID string) error
 	GetInventoryLogs(ctx context.Context, productID string, limit, offset int) ([]InventoryLog, int64, error)
 
 	// Admin Management

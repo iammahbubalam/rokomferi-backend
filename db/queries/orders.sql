@@ -5,9 +5,10 @@ SELECT * FROM carts WHERE user_id = $1;
 INSERT INTO carts (user_id) VALUES ($1) RETURNING *;
 
 -- name: GetCartItems :many
-SELECT ci.*, p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
+SELECT ci.*, p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
+JOIN variants v ON v.id = ci.variant_id
 WHERE ci.cart_id = $1;
 
 -- name: GetCartWithItems :many
@@ -23,10 +24,12 @@ SELECT
     p.base_price,
     p.sale_price,
     p.media,
-    p.stock
+    v.stock,
+    v.sku as variant_sku
 FROM carts c
 LEFT JOIN cart_items ci ON c.id = ci.cart_id
 LEFT JOIN products p ON ci.product_id = p.id
+LEFT JOIN variants v ON ci.variant_id = v.id
 WHERE c.user_id = $1;
 
 
@@ -40,11 +43,11 @@ WITH
     SELECT id FROM carts WHERE user_id = sqlc.arg(user_id)
   ),
   stock_valid AS (
-    SELECT p.id FROM products p
-    WHERE p.id = sqlc.arg(product_id)
-      AND p.stock >= sqlc.arg(quantity)
+    SELECT v.id FROM variants v
+    JOIN products p ON p.id = v.product_id
+    WHERE v.id = sqlc.arg(variant_id)
+      AND v.stock >= sqlc.arg(quantity)
       AND p.is_active = TRUE
-      AND (p.stock_status IS NULL OR p.stock_status != 'out_of_stock')
   ),
   existing_item AS (
     SELECT ci.id FROM cart_items ci
@@ -71,9 +74,10 @@ WITH
     SELECT cart_id FROM inserted
   )
 SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
-       p.name, p.slug, p.base_price, p.sale_price, p.media, p.stock
+       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku
 FROM cart_items ci
 JOIN products p ON p.id = ci.product_id
+JOIN variants v ON v.id = ci.variant_id
 WHERE ci.cart_id = (SELECT cart_id FROM affected_cart LIMIT 1);
 
 
@@ -126,14 +130,6 @@ JOIN products p ON p.id = oi.product_id
 WHERE oi.order_id = $1;
 
 -- name: HasPurchasedProduct :one
-SELECT EXISTS (
-    SELECT 1
-    FROM order_items oi
-    JOIN orders o ON o.id = oi.order_id
-    WHERE o.user_id = $1 
-      AND oi.product_id = $2
-      AND o.status = 'delivered'
-);
 SELECT EXISTS (
     SELECT 1
     FROM order_items oi

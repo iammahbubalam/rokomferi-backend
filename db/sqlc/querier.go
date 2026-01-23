@@ -81,18 +81,17 @@ type Querier interface {
 	// Revenue aggregation by day with parameterized date range
 	GetDailySales(ctx context.Context, arg GetDailySalesParams) ([]GetDailySalesRow, error)
 	GetDailySalesStats(ctx context.Context, arg GetDailySalesStatsParams) ([]DailySalesStat, error)
-	// Products with no sales in X days (parameterized)
+	// Variants with no sales in X days (parameterized)
 	GetDeadStockProducts(ctx context.Context, arg GetDeadStockProductsParams) ([]GetDeadStockProductsRow, error)
 	GetInventoryLogs(ctx context.Context, arg GetInventoryLogsParams) ([]InventoryLog, error)
 	// L9 Dashboard/Stats Queries: Fully Parameterized (Zero Hardcoded Values)
 	// All date ranges, thresholds, limits controlled by frontend via query params
-	// Products below threshold (parameterized - no hardcoded limit)
+	// Variants below threshold (parameterized - no hardcoded limit)
 	GetLowStockProducts(ctx context.Context, arg GetLowStockProductsParams) ([]GetLowStockProductsRow, error)
 	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
 	GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error)
 	GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error)
 	GetProductByID(ctx context.Context, id pgtype.UUID) (Product, error)
-	GetProductBySKU(ctx context.Context, sku string) (Product, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
 	GetProductIDsForCollection(ctx context.Context, collectionID pgtype.UUID) ([]pgtype.UUID, error)
 	GetProductStats(ctx context.Context) (GetProductStatsRow, error)
@@ -114,6 +113,7 @@ type Querier interface {
 	GetUserReviewForProduct(ctx context.Context, arg GetUserReviewForProductParams) (Review, error)
 	GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error)
 	GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error)
+	GetVariantsByProductIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Variant, error)
 	GetWishlistByUserID(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
 	GetWishlistItems(ctx context.Context, wishlistID pgtype.UUID) ([]GetWishlistItemsRow, error)
 	HasPurchasedProduct(ctx context.Context, arg HasPurchasedProductParams) (bool, error)
@@ -141,10 +141,10 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error
-	UpdateProductStock(ctx context.Context, arg UpdateProductStockParams) (int64, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)
+	UpdateVariantStock(ctx context.Context, arg UpdateVariantStockParams) (int64, error)
 	// L9 FIX: Simplified atomic upsert without expression-based conflict target
 	UpsertCartItemAtomic(ctx context.Context, arg UpsertCartItemAtomicParams) ([]UpsertCartItemAtomicRow, error)
 	UpsertContentBlock(ctx context.Context, arg UpsertContentBlockParams) (ContentBlock, error)

@@ -68,6 +68,12 @@ func (h *AdminCatalogHandler) CreateProduct(w http.ResponseWriter, r *http.Reque
 	}
 
 	product := req.Product
+
+	// L9: Normalize optional price fields (0 → nil for DB constraint)
+	if product.SalePrice != nil && *product.SalePrice <= 0 {
+		product.SalePrice = nil
+	}
+
 	// Map CategoryIDs to Categories
 	if len(req.CategoryIDs) > 0 {
 		product.Categories = make([]domain.Category, len(req.CategoryIDs))
@@ -173,6 +179,11 @@ func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Reque
 	product := req.Product
 	product.ID = id
 
+	// L9: Normalize optional price fields (0 → nil for DB constraint)
+	if product.SalePrice != nil && *product.SalePrice <= 0 {
+		product.SalePrice = nil
+	}
+
 	// Map CategoryIDs to Categories
 	if len(req.CategoryIDs) > 0 {
 		product.Categories = make([]domain.Category, len(req.CategoryIDs))
@@ -196,6 +207,7 @@ func (h *AdminCatalogHandler) UpdateProduct(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.catalogUC.UpdateProduct(r.Context(), &product); err != nil {
+		fmt.Printf("ERROR UpdateProduct: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -272,7 +284,7 @@ func (h *AdminCatalogHandler) GetProduct(w http.ResponseWriter, r *http.Request)
 }
 
 type adjustStockReq struct {
-	ProductID    string `json:"productId"`
+	VariantID    string `json:"variantId"`
 	ChangeAmount int    `json:"changeAmount"` // negative to deduct
 	Reason       string `json:"reason"`
 }
@@ -295,7 +307,7 @@ func (h *AdminCatalogHandler) AdjustStock(w http.ResponseWriter, r *http.Request
 		referenceID = adminUser.ID
 	}
 
-	if err := h.catalogUC.AdjustStock(r.Context(), req.ProductID, req.ChangeAmount, req.Reason, referenceID); err != nil {
+	if err := h.catalogUC.AdjustStock(r.Context(), req.VariantID, req.ChangeAmount, req.Reason, referenceID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

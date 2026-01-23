@@ -60,25 +60,28 @@ func (q *Queries) CreateInventoryLog(ctx context.Context, arg CreateInventoryLog
 const createVariant = `-- name: CreateVariant :one
 INSERT INTO variants (
     product_id, name, stock, sku, 
-    attributes, price, sale_price, images, weight, dimensions, barcode
+    attributes, price, sale_price, images, weight, dimensions, barcode, 
+    low_stock_threshold
 ) VALUES (
     $1, $2, $3, $4, 
-    $5, $6, $7, $8, $9, $10, $11
-) RETURNING id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode
+    $5, $6, $7, $8, $9, $10, $11,
+    $12
+) RETURNING id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at
 `
 
 type CreateVariantParams struct {
-	ProductID  pgtype.UUID    `json:"product_id"`
-	Name       string         `json:"name"`
-	Stock      int32          `json:"stock"`
-	Sku        *string        `json:"sku"`
-	Attributes []byte         `json:"attributes"`
-	Price      pgtype.Numeric `json:"price"`
-	SalePrice  pgtype.Numeric `json:"sale_price"`
-	Images     []string       `json:"images"`
-	Weight     pgtype.Numeric `json:"weight"`
-	Dimensions []byte         `json:"dimensions"`
-	Barcode    *string        `json:"barcode"`
+	ProductID         pgtype.UUID    `json:"product_id"`
+	Name              string         `json:"name"`
+	Stock             int32          `json:"stock"`
+	Sku               *string        `json:"sku"`
+	Attributes        []byte         `json:"attributes"`
+	Price             pgtype.Numeric `json:"price"`
+	SalePrice         pgtype.Numeric `json:"sale_price"`
+	Images            []string       `json:"images"`
+	Weight            pgtype.Numeric `json:"weight"`
+	Dimensions        []byte         `json:"dimensions"`
+	Barcode           *string        `json:"barcode"`
+	LowStockThreshold int32          `json:"low_stock_threshold"`
 }
 
 func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (Variant, error) {
@@ -94,6 +97,7 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (V
 		arg.Weight,
 		arg.Dimensions,
 		arg.Barcode,
+		arg.LowStockThreshold,
 	)
 	var i Variant
 	err := row.Scan(
@@ -109,6 +113,9 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (V
 		&i.Weight,
 		&i.Dimensions,
 		&i.Barcode,
+		&i.LowStockThreshold,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -173,7 +180,7 @@ func (q *Queries) GetInventoryLogs(ctx context.Context, arg GetInventoryLogsPara
 }
 
 const getVariantByID = `-- name: GetVariantByID :one
-SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode FROM variants WHERE id = $1
+SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at FROM variants WHERE id = $1
 `
 
 func (q *Queries) GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, error) {
@@ -192,12 +199,15 @@ func (q *Queries) GetVariantByID(ctx context.Context, id pgtype.UUID) (Variant, 
 		&i.Weight,
 		&i.Dimensions,
 		&i.Barcode,
+		&i.LowStockThreshold,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getVariantsByProductID = `-- name: GetVariantsByProductID :many
-SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode FROM variants WHERE product_id = $1
+SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at FROM variants WHERE product_id = $1
 `
 
 func (q *Queries) GetVariantsByProductID(ctx context.Context, productID pgtype.UUID) ([]Variant, error) {
@@ -222,6 +232,49 @@ func (q *Queries) GetVariantsByProductID(ctx context.Context, productID pgtype.U
 			&i.Weight,
 			&i.Dimensions,
 			&i.Barcode,
+			&i.LowStockThreshold,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getVariantsByProductIDs = `-- name: GetVariantsByProductIDs :many
+SELECT id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at FROM variants WHERE product_id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetVariantsByProductIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Variant, error) {
+	rows, err := q.db.Query(ctx, getVariantsByProductIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Variant{}
+	for rows.Next() {
+		var i Variant
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Name,
+			&i.Stock,
+			&i.Sku,
+			&i.Attributes,
+			&i.Price,
+			&i.SalePrice,
+			&i.Images,
+			&i.Weight,
+			&i.Dimensions,
+			&i.Barcode,
+			&i.LowStockThreshold,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -237,23 +290,25 @@ const updateVariant = `-- name: UpdateVariant :one
 UPDATE variants 
 SET name = $2, stock = $3, sku = $4,
     attributes = $5, price = $6, sale_price = $7, 
-    images = $8, weight = $9, dimensions = $10, barcode = $11
+    images = $8, weight = $9, dimensions = $10, barcode = $11,
+    low_stock_threshold = $12
 WHERE id = $1 
-RETURNING id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode
+RETURNING id, product_id, name, stock, sku, attributes, price, sale_price, images, weight, dimensions, barcode, low_stock_threshold, created_at, updated_at
 `
 
 type UpdateVariantParams struct {
-	ID         pgtype.UUID    `json:"id"`
-	Name       string         `json:"name"`
-	Stock      int32          `json:"stock"`
-	Sku        *string        `json:"sku"`
-	Attributes []byte         `json:"attributes"`
-	Price      pgtype.Numeric `json:"price"`
-	SalePrice  pgtype.Numeric `json:"sale_price"`
-	Images     []string       `json:"images"`
-	Weight     pgtype.Numeric `json:"weight"`
-	Dimensions []byte         `json:"dimensions"`
-	Barcode    *string        `json:"barcode"`
+	ID                pgtype.UUID    `json:"id"`
+	Name              string         `json:"name"`
+	Stock             int32          `json:"stock"`
+	Sku               *string        `json:"sku"`
+	Attributes        []byte         `json:"attributes"`
+	Price             pgtype.Numeric `json:"price"`
+	SalePrice         pgtype.Numeric `json:"sale_price"`
+	Images            []string       `json:"images"`
+	Weight            pgtype.Numeric `json:"weight"`
+	Dimensions        []byte         `json:"dimensions"`
+	Barcode           *string        `json:"barcode"`
+	LowStockThreshold int32          `json:"low_stock_threshold"`
 }
 
 func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error) {
@@ -269,6 +324,7 @@ func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (V
 		arg.Weight,
 		arg.Dimensions,
 		arg.Barcode,
+		arg.LowStockThreshold,
 	)
 	var i Variant
 	err := row.Scan(
@@ -284,6 +340,26 @@ func (q *Queries) UpdateVariant(ctx context.Context, arg UpdateVariantParams) (V
 		&i.Weight,
 		&i.Dimensions,
 		&i.Barcode,
+		&i.LowStockThreshold,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const updateVariantStock = `-- name: UpdateVariantStock :execrows
+UPDATE variants SET stock = stock + $2 WHERE id = $1 AND stock + $2 >= 0
+`
+
+type UpdateVariantStockParams struct {
+	ID    pgtype.UUID `json:"id"`
+	Stock int32       `json:"stock"`
+}
+
+func (q *Queries) UpdateVariantStock(ctx context.Context, arg UpdateVariantStockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateVariantStock, arg.ID, arg.Stock)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

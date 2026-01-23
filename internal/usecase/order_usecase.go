@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"log"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
 )
@@ -61,7 +60,7 @@ func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Ca
 	return cart, nil
 }
 
-func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID string, quantity int) (*domain.Cart, error) {
+func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID string, variantID *string, quantity int) (*domain.Cart, error) {
 	// Get cart and existing quantity
 	cart, err := u.GetMyCart(ctx, userID)
 	if err != nil {
@@ -81,25 +80,13 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 	newTotal := existingQty + quantity
 
 	// Use atomic upsert with new total
-	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, nil, newTotal)
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, variantID, newTotal)
 	if err != nil || len(items) == 0 {
-		// Get product for better error message
-		product, pErr := u.productRepo.GetProductByID(ctx, productID)
-		if pErr != nil {
-			return nil, fmt.Errorf("product not found")
+		if variantID != nil {
+			return nil, fmt.Errorf("insufficient stock or product unavailable for variant %s", *variantID)
+		} else {
+			return nil, fmt.Errorf("insufficient stock or product unavailable")
 		}
-		if product.Stock < newTotal {
-			return nil, fmt.Errorf("insufficient stock for %s (available: %d)", product.Name, product.Stock)
-		}
-		if product.StockStatus == "out_of_stock" {
-			return nil, fmt.Errorf("product %s is out of stock", product.Name)
-		}
-
-		// Debug why atomic query failed
-		log.Printf("DEBUG AddToCart: Cart exists (id=%s), Product exists (id=%s, stock=%d, stock_status=%v), Existing qty=%d, Adding=%d, New total=%d, but atomic query returned %d items",
-			cart.ID, productID, product.Stock, product.StockStatus, existingQty, quantity, newTotal, len(items))
-
-		return nil, fmt.Errorf("failed to add to cart")
 	}
 
 	// Return cart with all items
@@ -121,13 +108,13 @@ func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, produc
 	return u.GetMyCart(ctx, userID)
 }
 
-func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string, productID string, quantity int) (*domain.Cart, error) {
+func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string, productID string, variantID *string, quantity int) (*domain.Cart, error) {
 	if quantity <= 0 {
 		return u.RemoveFromCart(ctx, userID, productID)
 	}
 
 	// 🔥 ATOMIC: 1 DB CALL DOES EVERYTHING 🔥
-	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, nil, quantity)
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, variantID, quantity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update cart: %w", err)
 	}
@@ -135,32 +122,8 @@ func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string
 	// If no items returned, the atomic operation didn't insert/update anything
 	// This means EITHER user has no cart OR product stock is insufficient
 	if len(items) == 0 {
-		// Check what actually failed
-		// 1. Does user have a cart?
-		cart, cartErr := u.GetMyCart(ctx, userID)
-		if cartErr != nil {
-			return nil, fmt.Errorf("cart not found")
-		}
-
-		// 2. Does product exist and have enough stock?
-		product, pErr := u.productRepo.GetProductByID(ctx, productID)
-		if pErr != nil {
-			return nil, fmt.Errorf("product not found")
-		}
-
-		// 3. Stock validation
-		if product.Stock < quantity {
-			return nil, fmt.Errorf("insufficient stock (available: %d)", product.Stock)
-		}
-		if product.StockStatus == "out_of_stock" {
-			return nil, fmt.Errorf("product is out of stock")
-		}
-
-		// If we got here, cart exists, product exists, stock is sufficient
-		// But atomic query still failed - this is likely a bug in the SQL
-		log.Printf("DEBUG: Cart exists (id=%s), Product exists (id=%s, stock=%d), Requested qty=%d, but atomic query returned 0 items",
-			cart.ID, productID, product.Stock, quantity)
-		return nil, fmt.Errorf("unable to update cart: cart_id=%s, product_id=%s", cart.ID, productID)
+		// Simplified error since we rely on atomic query
+		return nil, fmt.Errorf("unable to update cart: insufficient stock or invalid item")
 	}
 
 	// Success! Build cart from returned items
@@ -282,22 +245,61 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			return nil, fmt.Errorf("product %s not found", item.ProductID)
 		}
 
-		if product.Stock < item.Quantity {
-			return nil, fmt.Errorf("insufficient stock for %s", product.Name)
-		}
-		if product.StockStatus == "out_of_stock" {
-			return nil, fmt.Errorf("product %s is out of stock", product.Name)
-		}
-
-		price := product.BasePrice
+		// Verify Variant & Pricing
+		var price float64
+		// Default to product price
+		price = product.BasePrice
 		if product.SalePrice != nil {
 			price = *product.SalePrice
 		}
 
+		// Find relevant variant logic
+		var targetVariantID string
+		if item.VariantID != nil {
+			targetVariantID = *item.VariantID
+		}
+
+		// L9 Fix: Iterate variants to find price override and validate ID
+		foundVariant := false
+		if len(product.Variants) > 0 {
+			// If target is empty, use first/default
+			if targetVariantID == "" {
+				targetVariantID = product.Variants[0].ID
+			}
+			for _, v := range product.Variants {
+				if v.ID == targetVariantID {
+					foundVariant = true
+					// Check for variant price override
+					if v.Price != nil {
+						price = *v.Price
+					}
+					// Check for variant sale price
+					if v.SalePrice != nil {
+						price = *v.SalePrice
+					}
+					break
+				}
+			}
+		} else {
+			// No variants? Should not happen with SSOT backfill, but handle gracefully
+			if targetVariantID == "" {
+				return nil, fmt.Errorf("product %s has no inventory variants", product.Name)
+			}
+		}
+
+		if !foundVariant && len(product.Variants) > 0 {
+			return nil, fmt.Errorf("variant %s not found for product %s", targetVariantID, product.Name)
+		}
+
 		total += price * float64(item.Quantity)
+
+		// Use local variable for safe pointer
+		variantIDPtr := &targetVariantID
+
 		orderItems = append(orderItems, domain.OrderItem{
 			ID:        utils.GenerateUUID(),
 			ProductID: item.ProductID,
+			VariantID: variantIDPtr,
 			Quantity:  item.Quantity,
 			Price:     price,
 		})
@@ -345,7 +347,10 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 
 		// Update Stock
 		for _, item := range order.Items {
-			if err := u.productRepo.UpdateStock(txCtx, item.ProductID, -item.Quantity, "order_placed", order.ID); err != nil {
+			if item.VariantID == nil {
+				return fmt.Errorf("item %s has no variant ID", item.ProductID)
+			}
+			if err := u.productRepo.UpdateStock(txCtx, *item.VariantID, -item.Quantity, "order_placed", order.ID); err != nil {
 				return err
 			}
 		}

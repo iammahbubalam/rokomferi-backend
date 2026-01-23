@@ -16,31 +16,28 @@ SELECT * FROM products WHERE slug = $1;
 -- name: GetProductByID :one
 SELECT * FROM products WHERE id = $1;
 
--- name: GetProductBySKU :one
-SELECT * FROM products WHERE sku = $1;
-
 -- name: CreateProduct :one
 INSERT INTO products (
-    name, slug, sku, description, base_price, sale_price, 
-    stock, stock_status, low_stock_threshold, is_featured, is_active, 
+    name, slug, description, base_price, sale_price, 
+    stock_status, is_featured, is_active, 
     media, attributes, specifications, 
     meta_title, meta_description, meta_keywords, og_image,
     brand, tags, warranty_info
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, 
-    $7, $8, $9, $10, $11, 
-    $12, $13, $14, 
-    $15, $16, $17, $18,
-    $19, $20, $21
+    $1, $2, $3, $4, $5, 
+    $6, $7, $8, 
+    $9, $10, $11, 
+    $12, $13, $14, $15,
+    $16, $17, $18
 ) RETURNING *;
 
 -- name: UpdateProduct :one
 UPDATE products
 SET name = $2, slug = $3, description = $4, base_price = $5, sale_price = $6, 
-    stock = $7, stock_status = $8, low_stock_threshold = $9, is_featured = $10, 
-    is_active = $11, media = $12, attributes = $13, specifications = $14,
-    meta_title = $15, meta_description = $16, meta_keywords = $17, og_image = $18,
-    brand = $19, tags = $20, warranty_info = $21
+    stock_status = $7, is_featured = $8, 
+    is_active = $9, media = $10, attributes = $11, specifications = $12,
+    meta_title = $13, meta_description = $14, meta_keywords = $15, og_image = $16,
+    brand = $17, tags = $18, warranty_info = $19
 WHERE id = $1
 RETURNING *;
 
@@ -50,8 +47,6 @@ UPDATE products SET is_active = $2 WHERE id = $1;
 -- name: DeleteProduct :exec
 DELETE FROM products WHERE id = $1;
 
--- name: UpdateProductStock :execrows
-UPDATE products SET stock = stock + $2 WHERE id = $1 AND stock + $2 >= 0;
 
 -- name: GetProductsWithCategoryFilter :many
 SELECT DISTINCT p.* FROM products p
@@ -122,10 +117,11 @@ SELECT product_id, collection_id FROM product_collections WHERE product_id = ANY
 
 -- name: GetProductStats :one
 SELECT 
-    COUNT(*) as total_products,
-    COUNT(*) FILTER (WHERE is_active = true) as active_products,
-    COUNT(*) FILTER (WHERE is_active = false) as inactive_products,
-    COUNT(*) FILTER (WHERE stock = 0) as out_of_stock,
-    COUNT(*) FILTER (WHERE stock > 0 AND stock <= low_stock_threshold) as low_stock,
-    COALESCE(SUM(base_price * stock), 0)::float8 as total_inventory_value
-FROM products;
+    COUNT(DISTINCT p.id) as total_products,
+    COUNT(DISTINCT p.id) FILTER (WHERE p.is_active = true) as active_products,
+    COUNT(DISTINCT p.id) FILTER (WHERE p.is_active = false) as inactive_products,
+    COUNT(DISTINCT v.id) FILTER (WHERE v.stock = 0) as out_of_stock,
+    COUNT(DISTINCT v.id) FILTER (WHERE v.stock > 0 AND v.stock <= v.low_stock_threshold) as low_stock,
+    COALESCE(SUM(COALESCE(v.price, p.base_price) * v.stock), 0)::float8 as total_inventory_value
+FROM products p
+LEFT JOIN variants v ON v.product_id = p.id;

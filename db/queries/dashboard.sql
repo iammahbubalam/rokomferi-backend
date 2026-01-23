@@ -2,20 +2,21 @@
 -- All date ranges, thresholds, limits controlled by frontend via query params
 
 -- name: GetLowStockProducts :many
--- Products below threshold (parameterized - no hardcoded limit)
+-- Variants below threshold (parameterized - no hardcoded limit)
 SELECT 
-  id, name, slug, stock, base_price, sale_price, sku, media, stock_status
-FROM products
-WHERE stock <= sqlc.arg(threshold)::int 
-  AND stock > 0
-  AND is_active = true
-ORDER BY stock ASC
+  p.id as product_id, p.name as product_name, p.slug, v.id as variant_id, v.name as variant_name, v.stock, v.sku, p.base_price, p.sale_price, p.media
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE v.stock <= sqlc.arg(threshold)::int 
+  AND v.stock > 0
+  AND p.is_active = true
+ORDER BY v.stock ASC
 LIMIT sqlc.arg(limit_count)::int;
 
 -- name: GetTopSellingProducts :many
 -- Best-selling products by quantity (parameterized date range and limit)
 SELECT 
-  p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media,
+  p.id, p.name, p.slug, p.base_price, p.sale_price, p.media,
   SUM(oi.quantity)::bigint as total_sold,
   SUM(oi.quantity * oi.price)::numeric as total_revenue
 FROM order_items oi
@@ -24,7 +25,7 @@ JOIN orders o ON o.id = oi.order_id
 WHERE o.created_at >= sqlc.arg(start_date)::timestamp
   AND o.created_at <= sqlc.arg(end_date)::timestamp
   AND o.status NOT IN ('cancelled', 'returned')
-GROUP BY p.id, p.name, p.slug, p.sku, p.base_price, p.sale_price, p.media
+GROUP BY p.id, p.name, p.slug, p.base_price, p.sale_price, p.media
 ORDER BY total_sold DESC
 LIMIT sqlc.arg(limit_count)::int;
 
@@ -70,21 +71,22 @@ WHERE created_at >= sqlc.arg(start_date)::timestamp
   AND status NOT IN ('cancelled', 'returned');
 
 -- name: GetDeadStockProducts :many
--- Products with no sales in X days (parameterized)
+-- Variants with no sales in X days (parameterized)
 SELECT 
-  p.id, p.name, p.slug, p.stock, p.base_price, p.sku, p.media,
+  p.id as product_id, p.name as product_name, p.slug, v.id as variant_id, v.name as variant_name, v.stock, v.sku, p.base_price, p.media,
   p.created_at
-FROM products p
-WHERE p.id NOT IN (
-  SELECT DISTINCT oi.product_id 
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE v.id NOT IN (
+  SELECT DISTINCT oi.variant_id 
   FROM order_items oi
   JOIN orders o ON oi.order_id = o.id
   WHERE o.created_at >= NOW() - (sqlc.arg(days)::int || ' days')::interval
     AND o.status NOT IN ('cancelled', 'returned')
 )
-AND p.stock > 0
+AND v.stock > 0
 AND p.is_active = true
-ORDER BY p.stock DESC, p.created_at ASC
+ORDER BY v.stock DESC, p.created_at ASC
 LIMIT sqlc.arg(limit_count)::int;
 
 -- name: GetCustomerRetention :one
