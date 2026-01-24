@@ -37,28 +37,28 @@ type CategoryReorderItem struct {
 }
 
 type Product struct {
-	ID                string       `json:"id"`
-	Name              string       `json:"name"`
-	Slug              string       `json:"slug"`
-	Description       string       `json:"description"`
-	BasePrice         float64      `json:"basePrice"`
-	SalePrice         *float64     `json:"salePrice"`
-	StockStatus       string       `json:"stockStatus"`
-	IsFeatured        bool         `json:"isFeatured"`
-	IsActive          bool         `json:"isActive"`
-	Media             RawJSON      `json:"media"`
-	Images            []string     `json:"images"` // Mapped from Media
-	Attributes        JSONB        `json:"attributes"`
-	Specs             JSONB        `json:"specifications"`
-	CreatedAt         time.Time    `json:"createdAt"`
-	UpdatedAt         time.Time    `json:"updatedAt"`
-	Variants          []Variant    `json:"variants"`
-	Categories        []Category   `json:"categories"`
-	Collections       []Collection `json:"collections"`
-	MetaTitle         string       `json:"metaTitle"`
-	MetaDescription   string       `json:"metaDescription"`
-	Keywords          string       `json:"keywords"`
-	OGImage           string       `json:"ogImage"`
+	ID              string       `json:"id"`
+	Name            string       `json:"name"`
+	Slug            string       `json:"slug"`
+	Description     string       `json:"description"`
+	BasePrice       float64      `json:"basePrice"`
+	SalePrice       *float64     `json:"salePrice"`
+	StockStatus     string       `json:"stockStatus"`
+	IsFeatured      bool         `json:"isFeatured"`
+	IsActive        bool         `json:"isActive"`
+	Media           RawJSON      `json:"media"`
+	Images          []string     `json:"images"` // Mapped from Media
+	Attributes      JSONB        `json:"attributes"`
+	Specs           JSONB        `json:"specifications"`
+	CreatedAt       time.Time    `json:"createdAt"`
+	UpdatedAt       time.Time    `json:"updatedAt"`
+	Variants        []Variant    `json:"variants"`
+	Categories      []Category   `json:"categories"`
+	Collections     []Collection `json:"collections"`
+	MetaTitle       string       `json:"metaTitle"`
+	MetaDescription string       `json:"metaDescription"`
+	Keywords        string       `json:"keywords"`
+	OGImage         string       `json:"ogImage"`
 
 	// L9 Fields
 	Brand        string   `json:"brand"`
@@ -99,6 +99,25 @@ type Variant struct {
 	Dimensions        JSONB    `json:"dimensions"`
 	Barcode           string   `json:"barcode"`
 	LowStockThreshold int      `json:"lowStockThreshold"`
+}
+
+// VariantWithProduct is used for SKU-level inventory listing
+type VariantWithProduct struct {
+	Variant
+	ProductName      string  `json:"productName"`
+	ProductSlug      string  `json:"productSlug"`
+	ProductBasePrice float64 `json:"productBasePrice"`
+	ProductImage     string  `json:"productImage"` // First image from product media
+}
+
+// VariantListFilter defines filters for variant listing
+type VariantListFilter struct {
+	ProductID    string
+	LowStockOnly bool
+	Search       string
+	Sort         string // stock_asc, stock_desc, sku_asc
+	Limit        int
+	Offset       int
 }
 
 type ProductStats struct {
@@ -148,6 +167,7 @@ type ProductRepository interface {
 	GetProductByID(ctx context.Context, id string) (*Product, error)
 	UpdateStock(ctx context.Context, variantID string, quantity int, reason, referenceID string) error
 	GetInventoryLogs(ctx context.Context, productID string, limit, offset int) ([]InventoryLog, int64, error)
+	GetVariantList(ctx context.Context, filter VariantListFilter) ([]VariantWithProduct, int64, error)
 
 	// Admin Management
 	CreateProduct(ctx context.Context, product *Product) error

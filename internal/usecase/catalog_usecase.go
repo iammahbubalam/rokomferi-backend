@@ -296,3 +296,20 @@ func (uc *CatalogUsecase) invalidateCategoryCache() {
 	uc.cache.Delete("category:flat:active")
 	uc.cache.Delete("category:flat:inactive")
 }
+
+// GetVariantList returns a paginated list of variants with product context
+func (u *CatalogUsecase) GetVariantList(ctx context.Context, filter domain.VariantListFilter) ([]domain.VariantWithProduct, domain.Pagination, error) {
+	variants, count, err := u.repo.GetVariantList(ctx, filter)
+	if err != nil {
+		return nil, domain.Pagination{}, err
+	}
+
+	pagination := domain.Pagination{
+		Page:       (filter.Offset / filter.Limit) + 1,
+		Limit:      filter.Limit,
+		TotalItems: count,
+		TotalPages: int((count + int64(filter.Limit) - 1) / int64(filter.Limit)),
+	}
+
+	return variants, pagination, nil
+}

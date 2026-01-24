@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
+	"rokomferi-backend/pkg/utils"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -281,6 +282,32 @@ func (h *AdminCatalogHandler) GetProduct(w http.ResponseWriter, r *http.Request)
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(product)
+}
+
+func (h *AdminCatalogHandler) GetVariantList(w http.ResponseWriter, r *http.Request) {
+	filter := domain.VariantListFilter{
+		ProductID:    r.URL.Query().Get("productId"),
+		LowStockOnly: r.URL.Query().Get("lowStockOnly") == "true",
+		Search:       r.URL.Query().Get("search"),
+		Sort:         r.URL.Query().Get("sort"),
+		Limit:        utils.ParseInt(r.URL.Query().Get("limit"), 50),
+		Offset:       utils.ParseInt(r.URL.Query().Get("offset"), 0),
+	}
+
+	variants, pagination, err := h.catalogUC.GetVariantList(r.Context(), filter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := domain.Response{
+		Success: true,
+		Data:    variants,
+		Meta:    pagination,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 type adjustStockReq struct {

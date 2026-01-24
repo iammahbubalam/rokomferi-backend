@@ -20,6 +20,7 @@ type Querier interface {
 	ClearCart(ctx context.Context, cartID pgtype.UUID) error
 	ClearProductCategories(ctx context.Context, productID pgtype.UUID) error
 	ClearProductCollections(ctx context.Context, productID pgtype.UUID) error
+	CountAllVariantsWithProduct(ctx context.Context, arg CountAllVariantsWithProductParams) (int64, error)
 	CountCoupons(ctx context.Context) (int64, error)
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
 	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
@@ -55,6 +56,7 @@ type Querier interface {
 	GetAllCategories(ctx context.Context) ([]Category, error)
 	GetAllCollections(ctx context.Context) ([]Collection, error)
 	GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]GetAllOrdersRow, error)
+	GetAllVariantsWithProduct(ctx context.Context, arg GetAllVariantsWithProductParams) ([]GetAllVariantsWithProductRow, error)
 	GetCartByUserID(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	GetCartItemByProductID(ctx context.Context, arg GetCartItemByProductIDParams) (CartItem, error)
 	GetCartItems(ctx context.Context, cartID pgtype.UUID) ([]GetCartItemsRow, error)

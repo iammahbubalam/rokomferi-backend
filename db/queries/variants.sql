@@ -49,3 +49,45 @@ SELECT COUNT(*) FROM inventory_logs WHERE ($1::uuid IS NULL OR product_id = $1);
 
 -- name: GetVariantsByProductIDs :many
 SELECT * FROM variants WHERE product_id = ANY($1::uuid[]);
+
+-- name: GetAllVariantsWithProduct :many
+SELECT 
+    v.id,
+    v.product_id,
+    v.name,
+    v.stock,
+    v.sku,
+    v.attributes,
+    v.price,
+    v.sale_price,
+    v.images,
+    v.weight,
+    v.dimensions,
+    v.barcode,
+    v.low_stock_threshold,
+    v.created_at,
+    v.updated_at,
+    p.name AS product_name,
+    p.slug AS product_slug,
+    p.base_price AS product_base_price,
+    p.media AS product_media
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE 
+    ($1::uuid IS NULL OR v.product_id = $1)
+    AND ($2::boolean = false OR v.stock <= v.low_stock_threshold)
+    AND ($3::text = '' OR v.sku ILIKE '%' || $3 || '%' OR v.name ILIKE '%' || $3 || '%' OR p.name ILIKE '%' || $3 || '%')
+ORDER BY 
+    CASE WHEN $4 = 'stock_asc' THEN v.stock END ASC,
+    CASE WHEN $4 = 'stock_desc' THEN v.stock END DESC,
+    CASE WHEN $4 = 'sku_asc' THEN v.sku END ASC,
+    CASE WHEN $4 = '' OR $4 IS NULL THEN v.created_at END DESC
+LIMIT $5 OFFSET $6;
+
+-- name: CountAllVariantsWithProduct :one
+SELECT COUNT(*) FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE 
+    ($1::uuid IS NULL OR v.product_id = $1)
+    AND ($2::boolean = false OR v.stock <= v.low_stock_threshold)
+    AND ($3::text = '' OR v.sku ILIKE '%' || $3 || '%' OR v.name ILIKE '%' || $3 || '%' OR p.name ILIKE '%' || $3 || '%');

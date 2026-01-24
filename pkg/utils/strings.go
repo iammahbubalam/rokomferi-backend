@@ -2,6 +2,7 @@ package utils
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -26,4 +27,17 @@ func GenerateSlug(input string) string {
 	s = strings.Trim(s, "-")
 
 	return s
+}
+
+// ParseInt parses a string to int with a fallback default value
+func ParseInt(s string, defaultVal int) int {
+	if s == "" {
+		return defaultVal
+	}
+	// We use Atoi which is equivalent to ParseInt(s, 10, 0) converted to int
+	val, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	return val
 }

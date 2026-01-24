@@ -60,6 +60,13 @@ func numericToFloat64Ptr(n pgtype.Numeric) *float64 {
 
 // --- Mappers ---
 
+func ptrStrToStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 func sqlcProductToDomain(p sqlc.Product) domain.Product {
 	prod := domain.Product{
 		ID:              uuidToString(p.ID),
@@ -1164,6 +1171,92 @@ func (r *productRepository) UpdateProductStatus(ctx context.Context, id string, 
 
 func (r *productRepository) DeleteProduct(ctx context.Context, id string) error {
 	return r.queries.DeleteProduct(ctx, stringToUUID(id))
+}
+
+func (r *productRepository) GetVariantList(ctx context.Context, filter domain.VariantListFilter) ([]domain.VariantWithProduct, int64, error) {
+	var prodUUID pgtype.UUID
+	if filter.ProductID != "" {
+		prodUUID = stringToUUID(filter.ProductID)
+	}
+
+	arg := sqlc.GetAllVariantsWithProductParams{
+		Column1: prodUUID,
+		Column2: filter.LowStockOnly,
+		Column3: filter.Search,
+		Column4: pgtype.Text{String: filter.Sort, Valid: filter.Sort != ""},
+		Limit:   int32(filter.Limit),
+		Offset:  int32(filter.Offset),
+	}
+
+	rows, err := r.queries.GetAllVariantsWithProduct(ctx, arg)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get Count
+	count, err := r.queries.CountAllVariantsWithProduct(ctx, sqlc.CountAllVariantsWithProductParams{
+		Column1: prodUUID,
+		Column2: filter.LowStockOnly,
+		Column3: filter.Search,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	variants := make([]domain.VariantWithProduct, len(rows))
+	for i, row := range rows {
+		// Map Variant fields
+		v := domain.Variant{
+			ID:                uuidToString(row.ID),
+			ProductID:         uuidToString(row.ProductID),
+			Name:              row.Name,
+			Stock:             int(row.Stock),
+			SKU:               *strPtr(ptrStrToStr(row.Sku)),
+			Price:             numericToFloat64Ptr(row.Price),
+			SalePrice:         numericToFloat64Ptr(row.SalePrice),
+			Weight:            numericToFloat64Ptr(row.Weight),
+			Barcode:           ptrStrToStr(row.Barcode),
+			LowStockThreshold: int(row.LowStockThreshold),
+		}
+
+		if row.Attributes != nil {
+			var attrs domain.JSONB
+			if err := json.Unmarshal(row.Attributes, &attrs); err == nil {
+				v.Attributes = attrs
+			}
+		}
+		if row.Dimensions != nil {
+			var dims domain.JSONB
+			if err := json.Unmarshal(row.Dimensions, &dims); err == nil {
+				v.Dimensions = dims
+			}
+		}
+		if row.Images != nil {
+			v.Images = row.Images
+		}
+
+		// Map Product Context
+		vp := domain.VariantWithProduct{
+			Variant:          v,
+			ProductName:      row.ProductName,
+			ProductSlug:      row.ProductSlug,
+			ProductBasePrice: numericToFloat64(row.ProductBasePrice),
+		}
+
+		// Extract first product image if available
+		if row.ProductMedia != nil {
+			var media struct {
+				Images []string `json:"images"`
+			}
+			if err := json.Unmarshal(row.ProductMedia, &media); err == nil && len(media.Images) > 0 {
+				vp.ProductImage = media.Images[0]
+			}
+		}
+
+		variants[i] = vp
+	}
+
+	return variants, count, nil
 }
 
 func (r *productRepository) GetProductStats(ctx context.Context) (*domain.ProductStats, error) {

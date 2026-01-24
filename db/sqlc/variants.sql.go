@@ -11,6 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAllVariantsWithProduct = `-- name: CountAllVariantsWithProduct :one
+SELECT COUNT(*) FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE 
+    ($1::uuid IS NULL OR v.product_id = $1)
+    AND ($2::boolean = false OR v.stock <= v.low_stock_threshold)
+    AND ($3::text = '' OR v.sku ILIKE '%' || $3 || '%' OR v.name ILIKE '%' || $3 || '%' OR p.name ILIKE '%' || $3 || '%')
+`
+
+type CountAllVariantsWithProductParams struct {
+	Column1 pgtype.UUID `json:"column_1"`
+	Column2 bool        `json:"column_2"`
+	Column3 string      `json:"column_3"`
+}
+
+func (q *Queries) CountAllVariantsWithProduct(ctx context.Context, arg CountAllVariantsWithProductParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAllVariantsWithProduct, arg.Column1, arg.Column2, arg.Column3)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countInventoryLogs = `-- name: CountInventoryLogs :one
 SELECT COUNT(*) FROM inventory_logs WHERE ($1::uuid IS NULL OR product_id = $1)
 `
@@ -136,6 +158,119 @@ DELETE FROM variants WHERE product_id = $1
 func (q *Queries) DeleteVariantsByProductID(ctx context.Context, productID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteVariantsByProductID, productID)
 	return err
+}
+
+const getAllVariantsWithProduct = `-- name: GetAllVariantsWithProduct :many
+SELECT 
+    v.id,
+    v.product_id,
+    v.name,
+    v.stock,
+    v.sku,
+    v.attributes,
+    v.price,
+    v.sale_price,
+    v.images,
+    v.weight,
+    v.dimensions,
+    v.barcode,
+    v.low_stock_threshold,
+    v.created_at,
+    v.updated_at,
+    p.name AS product_name,
+    p.slug AS product_slug,
+    p.base_price AS product_base_price,
+    p.media AS product_media
+FROM variants v
+JOIN products p ON v.product_id = p.id
+WHERE 
+    ($1::uuid IS NULL OR v.product_id = $1)
+    AND ($2::boolean = false OR v.stock <= v.low_stock_threshold)
+    AND ($3::text = '' OR v.sku ILIKE '%' || $3 || '%' OR v.name ILIKE '%' || $3 || '%' OR p.name ILIKE '%' || $3 || '%')
+ORDER BY 
+    CASE WHEN $4 = 'stock_asc' THEN v.stock END ASC,
+    CASE WHEN $4 = 'stock_desc' THEN v.stock END DESC,
+    CASE WHEN $4 = 'sku_asc' THEN v.sku END ASC,
+    CASE WHEN $4 = '' OR $4 IS NULL THEN v.created_at END DESC
+LIMIT $5 OFFSET $6
+`
+
+type GetAllVariantsWithProductParams struct {
+	Column1 pgtype.UUID `json:"column_1"`
+	Column2 bool        `json:"column_2"`
+	Column3 string      `json:"column_3"`
+	Column4 interface{} `json:"column_4"`
+	Limit   int32       `json:"limit"`
+	Offset  int32       `json:"offset"`
+}
+
+type GetAllVariantsWithProductRow struct {
+	ID                pgtype.UUID      `json:"id"`
+	ProductID         pgtype.UUID      `json:"product_id"`
+	Name              string           `json:"name"`
+	Stock             int32            `json:"stock"`
+	Sku               *string          `json:"sku"`
+	Attributes        []byte           `json:"attributes"`
+	Price             pgtype.Numeric   `json:"price"`
+	SalePrice         pgtype.Numeric   `json:"sale_price"`
+	Images            []string         `json:"images"`
+	Weight            pgtype.Numeric   `json:"weight"`
+	Dimensions        []byte           `json:"dimensions"`
+	Barcode           *string          `json:"barcode"`
+	LowStockThreshold int32            `json:"low_stock_threshold"`
+	CreatedAt         pgtype.Timestamp `json:"created_at"`
+	UpdatedAt         pgtype.Timestamp `json:"updated_at"`
+	ProductName       string           `json:"product_name"`
+	ProductSlug       string           `json:"product_slug"`
+	ProductBasePrice  pgtype.Numeric   `json:"product_base_price"`
+	ProductMedia      []byte           `json:"product_media"`
+}
+
+func (q *Queries) GetAllVariantsWithProduct(ctx context.Context, arg GetAllVariantsWithProductParams) ([]GetAllVariantsWithProductRow, error) {
+	rows, err := q.db.Query(ctx, getAllVariantsWithProduct,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllVariantsWithProductRow{}
+	for rows.Next() {
+		var i GetAllVariantsWithProductRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Name,
+			&i.Stock,
+			&i.Sku,
+			&i.Attributes,
+			&i.Price,
+			&i.SalePrice,
+			&i.Images,
+			&i.Weight,
+			&i.Dimensions,
+			&i.Barcode,
+			&i.LowStockThreshold,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProductName,
+			&i.ProductSlug,
+			&i.ProductBasePrice,
+			&i.ProductMedia,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getInventoryLogs = `-- name: GetInventoryLogs :many

@@ -160,6 +160,7 @@ func main() {
 	mux.Handle("DELETE /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.DeleteProduct))
 	mux.Handle("POST /api/v1/admin/inventory/adjust", adminMiddleware(adminCatalogHandler.AdjustStock))
 	mux.Handle("GET /api/v1/admin/inventory/logs", adminMiddleware(adminCatalogHandler.GetInventoryLogs))
+	mux.Handle("GET /api/v1/admin/inventory/variants", adminMiddleware(adminCatalogHandler.GetVariantList))
 	mux.Handle("GET /api/v1/admin/products/stats", adminMiddleware(adminCatalogHandler.GetProductStats))
 
 	mux.Handle("GET /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.GetAllCategories))
