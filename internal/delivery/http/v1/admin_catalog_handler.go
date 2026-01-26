@@ -237,8 +237,16 @@ func (h *AdminCatalogHandler) UpdateProductStatus(w http.ResponseWriter, r *http
 		return
 	}
 
+	// L9 Pattern: Return the Delta State so frontend can update local cache accurately
+	// without refetching the entire list or stats.
+	response := map[string]interface{}{
+		"id":       id,
+		"isActive": req.IsActive,
+		"status":   "updated",
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *AdminCatalogHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {

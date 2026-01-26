@@ -161,7 +161,15 @@ func (uc *CatalogUsecase) DeleteCategory(ctx context.Context, id string) error {
 }
 
 func (uc *CatalogUsecase) ReorderCategories(ctx context.Context, updates []domain.CategoryReorderItem) error {
-	return uc.repo.ReorderCategories(ctx, updates)
+	if err := uc.repo.ReorderCategories(ctx, updates); err != nil {
+		return err
+	}
+	// Warm the cache immediately with fresh data
+	tree, err := uc.repo.GetCategoryTree(ctx)
+	if err == nil {
+		uc.cache.Set("category:tree:all", tree, uc.cfg.CacheCategoryTTL)
+	}
+	return nil
 }
 
 func (u *CatalogUsecase) ListProducts(ctx context.Context, filter domain.ProductFilter) ([]domain.Product, int64, error) {

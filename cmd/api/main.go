@@ -164,6 +164,7 @@ func main() {
 	mux.Handle("GET /api/v1/admin/products/stats", adminMiddleware(adminCatalogHandler.GetProductStats))
 
 	mux.Handle("GET /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.GetAllCategories))
+	mux.Handle("GET /api/v1/admin/categories/tree", adminMiddleware(http.HandlerFunc(catalogHandler.GetCategories)))
 	mux.Handle("POST /api/v1/admin/categories", adminMiddleware(adminCatalogHandler.CreateCategory))
 	mux.Handle("PUT /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.UpdateCategory))
 	mux.Handle("DELETE /api/v1/admin/categories/{id}", adminMiddleware(adminCatalogHandler.DeleteCategory))
