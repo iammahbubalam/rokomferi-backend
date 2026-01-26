@@ -94,8 +94,8 @@ WHERE ci.cart_id = c.id
 DELETE FROM cart_items WHERE cart_id = $1;
 
 -- name: CreateOrder :one
-INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status, paid_amount, payment_details, is_preorder)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetOrderByID :one

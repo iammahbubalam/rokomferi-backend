@@ -142,10 +142,13 @@ func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string
 // --- Order Logic ---
 
 type CheckoutReq struct {
-	Address    domain.JSONB      `json:"address"`
-	Payment    string            `json:"paymentMethod"`
-	Items      []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
-	CouponCode string            `json:"couponCode,omitempty"`
+	Address         domain.JSONB      `json:"address"`
+	Payment         string            `json:"paymentMethod"`
+	Items           []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
+	CouponCode      string            `json:"couponCode,omitempty"`
+	PaymentTrxID    string            `json:"paymentTrxId,omitempty"`
+	PaymentProvider string            `json:"paymentProvider,omitempty"`
+	PaymentPhone    string            `json:"paymentPhone,omitempty"`
 }
 
 type CheckoutItemReq struct {
@@ -235,9 +238,14 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		cartID = cart.ID
 	}
 
-	// 2. Calculate Total & Prepare Order Items
+	// 2. Calculate Total & Prepare Order Items & Check Pre-order
 	var total float64
 	var orderItems []domain.OrderItem
+	var preOrderDepositRequired float64
+	isPreOrderOrder := false
+
+	// TODO: Get from Config/DB (Admin Setting)
+	const PreOrderPercentage = 0.50
 
 	for _, item := range processItems {
 		product, err := u.productRepo.GetProductByID(ctx, item.ProductID)
@@ -277,6 +285,8 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 					if v.SalePrice != nil {
 						price = *v.SalePrice
 					}
+					// Update VariantID for checking stock status if variant had one (currently Product level)
+					// Product.StockStatus is global for now.
 					break
 				}
 			}
@@ -291,7 +301,14 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			return nil, fmt.Errorf("variant %s not found for product %s", targetVariantID, product.Name)
 		}
 
-		total += price * float64(item.Quantity)
+		itemTotal := price * float64(item.Quantity)
+		total += itemTotal
+
+		// Pre-order Calculation
+		if product.StockStatus == "pre_order" {
+			isPreOrderOrder = true
+			preOrderDepositRequired += itemTotal * PreOrderPercentage
+		}
 
 		// Use local variable for safe pointer
 		variantIDPtr := &targetVariantID
@@ -328,6 +345,28 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		// Since we didn't add columns to Orders table yet, we assume TotalAmount reflects the discounted price.
 	}
 
+	// 4. Pre-Order Validation
+	paymentDetails := domain.JSONB{}
+	paymentStatus := "pending"
+	paidAmount := 0.0
+
+	if isPreOrderOrder && preOrderDepositRequired > 0 {
+		if req.PaymentTrxID == "" || req.PaymentProvider == "" || req.PaymentPhone == "" {
+			return nil, fmt.Errorf("pre-order items require partial payment info (TrxID, Provider, Phone)")
+		}
+		paymentStatus = "pending_verification"
+		paidAmount = preOrderDepositRequired
+
+		// Map details
+		detailsMap := map[string]interface{}{
+			"provider":         req.PaymentProvider,
+			"transaction_id":   req.PaymentTrxID,
+			"sender_number":    req.PaymentPhone,
+			"deposit_required": preOrderDepositRequired,
+		}
+		paymentDetails = domain.JSONB(detailsMap)
+	}
+
 	order := &domain.Order{
 		ID:              utils.GenerateUUID(),
 		UserID:          userID,
@@ -335,11 +374,14 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		TotalAmount:     total,
 		ShippingAddress: req.Address,
 		PaymentMethod:   req.Payment,
-		PaymentStatus:   "pending",
+		PaymentStatus:   paymentStatus,
+		PaidAmount:      paidAmount,
+		IsPreOrder:      isPreOrderOrder,
+		PaymentDetails:  paymentDetails,
 		Items:           orderItems,
 	}
 
-	// 4. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
+	// 5. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
 	err := u.txManager.Do(ctx, func(txCtx context.Context) error {
 		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
 			return err

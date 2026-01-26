@@ -71,8 +71,16 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 		TotalAmount:   numericToFloat64(o.TotalAmount),
 		PaymentMethod: ptrString(o.PaymentMethod),
 		PaymentStatus: ptrString(o.PaymentStatus),
+		PaidAmount:    numericToFloat64(o.PaidAmount),
+		IsPreOrder:    o.IsPreorder,
 		CreatedAt:     pgtimeToTime(o.CreatedAt),
 		UpdatedAt:     pgtimeToTime(o.UpdatedAt),
+	}
+
+	if len(o.PaymentDetails) > 0 {
+		var details domain.JSONB
+		json.Unmarshal(o.PaymentDetails, &details)
+		order.PaymentDetails = details
 	}
 
 	// Parse shipping address
@@ -82,6 +90,7 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 		order.ShippingAddress = addr
 	}
 
+	// ... items mapping (unchanged, will be included by context) ...
 	order.Items = make([]domain.OrderItem, len(items))
 	for i, item := range items {
 		order.Items[i] = domain.OrderItem{
@@ -106,6 +115,8 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 	}
 	return order
 }
+
+// ...
 
 // --- Cart Methods ---
 
@@ -245,6 +256,7 @@ func (r *orderRepository) ClearCart(ctx context.Context, cartID string) error {
 
 func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) error {
 	shippingAddrBytes, _ := json.Marshal(order.ShippingAddress)
+	paymentDetailsBytes, _ := json.Marshal(order.PaymentDetails)
 
 	created, err := r.queries.CreateOrder(ctx, sqlc.CreateOrderParams{
 		UserID:          stringToUUID(order.UserID),
@@ -253,6 +265,9 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 		ShippingAddress: shippingAddrBytes,
 		PaymentMethod:   strPtr(order.PaymentMethod),
 		PaymentStatus:   strPtr(order.PaymentStatus),
+		PaidAmount:      float64ToNumeric(order.PaidAmount),
+		PaymentDetails:  paymentDetailsBytes,
+		IsPreorder:      order.IsPreOrder,
 	})
 	if err != nil {
 		return err
@@ -286,6 +301,8 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 
 	return nil
 }
+
+// ...
 
 func (r *orderRepository) GetByID(ctx context.Context, id string) (*domain.Order, error) {
 	order, err := r.queries.GetOrderByID(ctx, stringToUUID(id))
@@ -344,6 +361,8 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 			TotalAmount:   numericToFloat64(o.TotalAmount),
 			PaymentMethod: ptrString(o.PaymentMethod),
 			PaymentStatus: ptrString(o.PaymentStatus),
+			PaidAmount:    numericToFloat64(o.PaidAmount),
+			IsPreOrder:    o.IsPreorder,
 			CreatedAt:     pgtimeToTime(o.CreatedAt),
 			UpdatedAt:     pgtimeToTime(o.UpdatedAt),
 			User: domain.User{
@@ -351,6 +370,11 @@ func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status st
 				FirstName: ptrString(o.FirstName),
 				LastName:  ptrString(o.LastName),
 			},
+		}
+		if len(o.PaymentDetails) > 0 {
+			var details domain.JSONB
+			json.Unmarshal(o.PaymentDetails, &details)
+			result[i].PaymentDetails = details
 		}
 		if len(o.ShippingAddress) > 0 {
 			var addr domain.JSONB

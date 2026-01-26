@@ -135,6 +135,9 @@ type Order struct {
 	PaymentStatus   *string          `json:"payment_status"`
 	CreatedAt       pgtype.Timestamp `json:"created_at"`
 	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
+	PaidAmount      pgtype.Numeric   `json:"paid_amount"`
+	PaymentDetails  []byte           `json:"payment_details"`
+	IsPreorder      bool             `json:"is_preorder"`
 }
 
 type OrderItem struct {

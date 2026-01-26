@@ -1316,3 +1316,13 @@ func (r *productRepository) GetReviews(ctx context.Context, productID string) ([
 	}
 	return result, nil
 }
+
+// GetVariantByID fetches a single variant by ID
+func (r *productRepository) GetVariantByID(ctx context.Context, id string) (*domain.Variant, error) {
+	v, err := r.queries.GetVariantByID(ctx, stringToUUID(id))
+	if err != nil {
+		return nil, err
+	}
+	variant := sqlcVariantToDomain(v)
+	return &variant, nil
+}

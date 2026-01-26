@@ -63,6 +63,23 @@ func (uc *CatalogUsecase) DeleteProduct(ctx context.Context, id string) error {
 }
 
 func (uc *CatalogUsecase) AdjustStock(ctx context.Context, variantID string, changeAmount int, reason, referenceID string) error {
+	// 1. Fetch current stock (L9 Robustness)
+	variant, err := uc.repo.GetVariantByID(ctx, variantID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch variant: %w", err)
+	}
+	if variant == nil {
+		return fmt.Errorf("variant not found")
+	}
+
+	// 2. Validate Negative Stock
+	// Allow negative stock only if explicitly allowed (e.g., pre_order).
+	// Currently enforcing strict non-negative policy for standard flow.
+	newStock := variant.Stock + changeAmount
+	if newStock < 0 {
+		return fmt.Errorf("insufficient stock: current %d, deducting %d", variant.Stock, -changeAmount)
+	}
+
 	uc.invalidateStatsCache()
 	return uc.repo.UpdateStock(ctx, variantID, changeAmount, reason, referenceID)
 }

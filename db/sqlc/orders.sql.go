@@ -66,9 +66,9 @@ func (q *Queries) CreateCart(ctx context.Context, userID pgtype.UUID) (Cart, err
 }
 
 const createOrder = `-- name: CreateOrder :one
-INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at
+INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status, paid_amount, payment_details, is_preorder)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder
 `
 
 type CreateOrderParams struct {
@@ -78,6 +78,9 @@ type CreateOrderParams struct {
 	ShippingAddress []byte         `json:"shipping_address"`
 	PaymentMethod   *string        `json:"payment_method"`
 	PaymentStatus   *string        `json:"payment_status"`
+	PaidAmount      pgtype.Numeric `json:"paid_amount"`
+	PaymentDetails  []byte         `json:"payment_details"`
+	IsPreorder      bool           `json:"is_preorder"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -88,6 +91,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.ShippingAddress,
 		arg.PaymentMethod,
 		arg.PaymentStatus,
+		arg.PaidAmount,
+		arg.PaymentDetails,
+		arg.IsPreorder,
 	)
 	var i Order
 	err := row.Scan(
@@ -100,6 +106,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.PaymentStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PaidAmount,
+		&i.PaymentDetails,
+		&i.IsPreorder,
 	)
 	return i, err
 }
@@ -139,7 +148,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getAllOrders = `-- name: GetAllOrders :many
-SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, u.email, u.first_name, u.last_name
+SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, u.email, u.first_name, u.last_name
 FROM orders o
 JOIN users u ON u.id = o.user_id
 WHERE ($1::text = '' OR o.status = $1)
@@ -163,6 +172,9 @@ type GetAllOrdersRow struct {
 	PaymentStatus   *string          `json:"payment_status"`
 	CreatedAt       pgtype.Timestamp `json:"created_at"`
 	UpdatedAt       pgtype.Timestamp `json:"updated_at"`
+	PaidAmount      pgtype.Numeric   `json:"paid_amount"`
+	PaymentDetails  []byte           `json:"payment_details"`
+	IsPreorder      bool             `json:"is_preorder"`
 	Email           string           `json:"email"`
 	FirstName       *string          `json:"first_name"`
 	LastName        *string          `json:"last_name"`
@@ -187,6 +199,9 @@ func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]G
 			&i.PaymentStatus,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PaidAmount,
+			&i.PaymentDetails,
+			&i.IsPreorder,
 			&i.Email,
 			&i.FirstName,
 			&i.LastName,
@@ -368,7 +383,7 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at FROM orders WHERE id = $1
+SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder FROM orders WHERE id = $1
 `
 
 func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error) {
@@ -384,6 +399,9 @@ func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, erro
 		&i.PaymentStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PaidAmount,
+		&i.PaymentDetails,
+		&i.IsPreorder,
 	)
 	return i, err
 }
@@ -438,7 +456,7 @@ func (q *Queries) GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]Get
 }
 
 const getOrdersByUserID = `-- name: GetOrdersByUserID :many
-SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at FROM orders WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder FROM orders WHERE user_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error) {
@@ -460,6 +478,9 @@ func (q *Queries) GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]
 			&i.PaymentStatus,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PaidAmount,
+			&i.PaymentDetails,
+			&i.IsPreorder,
 		); err != nil {
 			return nil, err
 		}

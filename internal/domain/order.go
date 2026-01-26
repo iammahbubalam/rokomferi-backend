@@ -35,6 +35,9 @@ type Order struct {
 	ShippingAddress JSONB       `json:"shippingAddress"`
 	PaymentMethod   string      `json:"paymentMethod"`
 	PaymentStatus   string      `json:"paymentStatus"`
+	PaidAmount      float64     `json:"paidAmount"`
+	PaymentDetails  JSONB       `json:"paymentDetails"`
+	IsPreOrder      bool        `json:"isPreOrder"`
 	Items           []OrderItem `json:"items"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
