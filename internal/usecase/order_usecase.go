@@ -500,119 +500,44 @@ func (u *OrderUsecase) UpdateOrderStatus(ctx context.Context, orderID, newStatus
 }
 
 // L9: Strict State Transition Rules
+// L9: Simple Forward-Only Logic (Weight Based)
 func (u *OrderUsecase) validateOrderTransition(order *domain.Order, newStatus string) error {
-	current := order.Status
+	// We define a "Progress Weight" for each state.
+	// Users can jump forward (e.g. Pending -> Cancelled), but NEVER backward (e.g. Cancelled -> Pending).
 
-	// Identity transition (no-op)
-	if current == newStatus {
+	weights := map[string]int{
+		domain.OrderStatusPending:             10,
+		domain.OrderStatusPendingVerification: 10,
+		domain.OrderStatusProcessing:          20,
+		domain.OrderStatusShipped:             30,
+		domain.OrderStatusDelivered:           40,
+		domain.OrderStatusPaid:                50,
+		domain.OrderStatusReturned:            60,
+		domain.OrderStatusRefunded:            70,
+		domain.OrderStatusCancelled:           80, // Terminal
+		domain.OrderStatusFake:                90, // Terminal
+	}
+
+	currentWeight, okCurrent := weights[order.Status]
+	newWeight, okNew := weights[newStatus]
+
+	// If unknown status, allow update to fix data
+	if !okCurrent || !okNew {
 		return nil
 	}
 
-	// Define Allowed Transitions Graph
-	// Key: Current Status -> Value: Allowed Next Statuses
-	validTransitions := map[string][]string{
-		domain.OrderStatusPending:             {domain.OrderStatusProcessing, domain.OrderStatusCancelled, domain.OrderStatusFake},
-		domain.OrderStatusPendingVerification: {domain.OrderStatusProcessing, domain.OrderStatusCancelled, domain.OrderStatusFake},
-		domain.OrderStatusProcessing:          {domain.OrderStatusShipped, domain.OrderStatusCancelled, domain.OrderStatusFake},
-		domain.OrderStatusShipped:             {domain.OrderStatusDelivered, domain.OrderStatusReturned, domain.OrderStatusFake, domain.OrderStatusCancelled}, // Cancelled allowed if shipment recalled
-		domain.OrderStatusDelivered:           {domain.OrderStatusPaid, domain.OrderStatusReturned},                                                           // Paid is the success path after Delivery for COD
-		domain.OrderStatusPaid:                {domain.OrderStatusReturned, domain.OrderStatusRefunded},                                                       // Can only return/refund after valid payment
-
-		// Terminal-ish states (Admin can mostly reset if needed, but with caution)
-		domain.OrderStatusCancelled: {domain.OrderStatusPending},                               // Allow reactivation
-		domain.OrderStatusRefunded:  {domain.OrderStatusPending},                               // Allow correction/reactivation
-		domain.OrderStatusReturned:  {domain.OrderStatusPending, domain.OrderStatusProcessing}, // Reprocess
-		domain.OrderStatusFake:      {domain.OrderStatusPending},                               // Correction
-	}
-
-	allowed, exists := validTransitions[current]
-	// If current status not in map (e.g. legacy status), allow cautious admin override
-	if !exists {
-		// Log warning? For now, if we are robust, we block unknown states.
-		// But let's allow "Manual Admin Override" if strictly needed?
-		// User said "Strictly implement logic". So we BLOCK.
-		return fmt.Errorf("invalid current logic state: %s", current)
-	}
-
-	isAllowed := false
-	for _, s := range allowed {
-		if s == newStatus {
-			isAllowed = true
-			break
-		}
-	}
-
-	if !isAllowed {
-		return fmt.Errorf("invalid transition: cannot go from %s to %s", current, newStatus)
+	if newWeight < currentWeight {
+		return fmt.Errorf("invalid transition: cannot go backward from '%s' (%d) to '%s' (%d)", order.Status, currentWeight, newStatus, newWeight)
 	}
 
 	return nil
 }
 
-// L9: Side Effects Handler
+// L9: No Side Effects (Manual Management Mode)
 func (u *OrderUsecase) handleOrderStateSideEffects(ctx context.Context, order *domain.Order, newStatus, actorID string) error {
-	// A. Stock Management
-	// Restock conditions: Cancelled, Returned, Fake, Refunded (if considered a return)
-	// Note: Move TO Refunded is usually handled by ProcessRefund, but if done manually here, we assume it implies restock?
-	// Let's keep manual move to Refunded as NO-OP for stock unless explicitly known.
-	// Actually, if we allow manual move TO Refunded, we should probably Restock.
-	// But `ProcessRefund` does that.
-	// Limit: UpdateStatus to 'refunded' manually here implies we just change label.
-	// But we are focusing on REACTIVATION here.
-
-	isRestockTarget := newStatus == domain.OrderStatusCancelled ||
-		newStatus == domain.OrderStatusReturned ||
-		newStatus == domain.OrderStatusFake
-
-	// If we are MOVING TO a restock state FROM a non-restock state
-	// (Check if we weren't already cancelled/returned to prevent double restock if re-applying)
-	wasRestocked := order.Status == domain.OrderStatusCancelled ||
-		order.Status == domain.OrderStatusReturned ||
-		order.Status == domain.OrderStatusFake ||
-		order.Status == domain.OrderStatusRefunded // L9 Fix: Refunded implies stock returns usually
-
-	if isRestockTarget && !wasRestocked {
-		reason := fmt.Sprintf("auto-restock: %s", newStatus)
-		for _, item := range order.Items {
-			targetID := item.ProductID
-			if item.VariantID != nil {
-				targetID = *item.VariantID
-			}
-			if err := u.productRepo.UpdateStock(ctx, targetID, item.Quantity, reason, order.ID); err != nil {
-				return fmt.Errorf("failed to restock %s: %v", targetID, err)
-			}
-		}
-	}
-
-	// Deduct Stock if reactivating (e.g. Cancelled -> Pending)
-	if wasRestocked && !isRestockTarget {
-		reason := fmt.Sprintf("stock-deduct: reactivation to %s", newStatus)
-		for _, item := range order.Items {
-			targetID := item.ProductID
-			if item.VariantID != nil {
-				targetID = *item.VariantID
-			}
-			// Use negative quantity to deduct
-			if err := u.productRepo.UpdateStock(ctx, targetID, -item.Quantity, reason, order.ID); err != nil {
-				return fmt.Errorf("failed to deduct stock %s: %v", targetID, err)
-			}
-		}
-	}
-
-	// B. Payment Status Synchronization
-	// Forward: Delivered -> Paid
-	if newStatus == domain.OrderStatusPaid {
-		// Only auto-mark as paid if not already paid
-		if order.PaymentStatus != domain.PaymentStatusPaid {
-			if err := u.orderRepo.UpdatePaymentStatus(ctx, order.ID, domain.PaymentStatusPaid); err != nil {
-				return err
-			}
-			// Should we set PaidAmount to TotalAmount? Secure approach: Yes.
-			// Assuming we have a SetPaidAmount repo method... if not, skip for now or rely on separate payment flow.
-			// Ideally update PaidAmount column too.
-		}
-	}
-
+	// User explicitly requested NO AUTOMATED STOCK OR PAYMENT UPDATES.
+	// Operations will be handled manually in Inventory/Product management.
+	// We only update the status field itself (handled by caller).
 	return nil
 }
 

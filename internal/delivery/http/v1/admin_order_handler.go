@@ -81,7 +81,9 @@ func (h *AdminOrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request)
 	adminID := user.ID
 
 	if err := h.orderUC.UpdateOrderStatus(r.Context(), id, req.Status, req.Note, adminID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -101,7 +103,9 @@ func (h *AdminOrderHandler) VerifyPayment(w http.ResponseWriter, r *http.Request
 	adminID := user.ID
 
 	if err := h.orderUC.VerifyOrderPayment(r.Context(), id, adminID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -160,7 +164,9 @@ func (h *AdminOrderHandler) RefundOrder(w http.ResponseWriter, r *http.Request) 
 	adminID := user.ID
 
 	if err := h.orderUC.ProcessRefund(r.Context(), id, req.Amount, req.Reason, req.Restock, adminID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -187,7 +193,9 @@ func (h *AdminOrderHandler) UpdatePaymentStatus(w http.ResponseWriter, r *http.R
 	adminID := user.ID
 
 	if err := h.orderUC.UpdatePaymentStatus(r.Context(), id, req.Status, adminID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
