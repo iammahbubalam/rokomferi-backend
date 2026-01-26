@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+type OrderFilter struct {
+	Page          int
+	Limit         int
+	Status        string
+	PaymentStatus string
+	IsPreOrder    *bool
+	Search        string
+}
+
 // --- Cart Entities ---
 
 type Cart struct {
@@ -36,6 +45,7 @@ type Order struct {
 	PaymentMethod   string      `json:"paymentMethod"`
 	PaymentStatus   string      `json:"paymentStatus"`
 	PaidAmount      float64     `json:"paidAmount"`
+	RefundedAmount  float64     `json:"refundedAmount"`
 	PaymentDetails  JSONB       `json:"paymentDetails"`
 	IsPreOrder      bool        `json:"isPreOrder"`
 	Items           []OrderItem `json:"items"`
@@ -55,24 +65,37 @@ type OrderItem struct {
 
 // --- Interfaces ---
 
+type OrderHistory struct {
+	ID             string    `json:"id"`
+	OrderID        string    `json:"orderId"`
+	PreviousStatus *string   `json:"previousStatus"`
+	NewStatus      string    `json:"newStatus"`
+	Reason         *string   `json:"reason"`
+	CreatedBy      *string   `json:"createdBy"`             // UserID
+	CreatedName    *string   `json:"createdName,omitempty"` // Enriched
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
 type OrderRepository interface {
+	CreateOrder(ctx context.Context, order *Order) error
+	GetByID(ctx context.Context, id string) (*Order, error)
+	GetByUserID(ctx context.Context, userID string) ([]Order, error)
+	GetAll(ctx context.Context, filter OrderFilter) ([]Order, int64, error)
+	UpdateStatus(ctx context.Context, id, status string) error
+	UpdatePaymentStatus(ctx context.Context, id, status string) error
+
 	// Cart
 	GetCartByUserID(ctx context.Context, userID string) (*Cart, error)
-	GetCartWithItems(ctx context.Context, userID string) ([]CartItem, error)
 	CreateCart(ctx context.Context, cart *Cart) error
+	GetCartWithItems(ctx context.Context, userID string) ([]CartItem, error)
 	UpsertCartItemAtomic(ctx context.Context, userID, productID string, variantID *string, quantity int) ([]CartItem, error)
 	AtomicRemoveCartItem(ctx context.Context, userID, productID string) error
 	ClearCart(ctx context.Context, cartID string) error
 
-	// Order
-	CreateOrder(ctx context.Context, order *Order) error
-	GetByID(ctx context.Context, id string) (*Order, error)
-	GetByUserID(ctx context.Context, userID string) ([]Order, error)
+	// Refunds & History
+	CreateRefund(ctx context.Context, orderID string, amount float64, reason string, restock bool, createdBy *string) error
+	CreateOrderHistory(ctx context.Context, history *OrderHistory) error
+	GetOrderHistory(ctx context.Context, orderID string) ([]OrderHistory, error)
 
-	// Admin Methods
-	GetAll(ctx context.Context, page, limit int, status string) ([]Order, int64, error)
-	UpdateStatus(ctx context.Context, id, status string) error
-
-	// Verification
 	HasPurchasedProduct(ctx context.Context, userID, productID string) (bool, error)
 }

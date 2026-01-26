@@ -335,19 +335,48 @@ func (r *orderRepository) GetByUserID(ctx context.Context, userID string) ([]dom
 
 // --- Admin Methods ---
 
-func (r *orderRepository) GetAll(ctx context.Context, page, limit int, status string) ([]domain.Order, int64, error) {
+func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter) ([]domain.Order, int64, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+	}
+	limit := filter.Limit
+	if limit < 1 {
+		limit = 20
+	}
 	offset := (page - 1) * limit
 
+	var status *string
+	if filter.Status != "" {
+		status = &filter.Status
+	}
+	var paymentStatus *string
+	if filter.PaymentStatus != "" {
+		paymentStatus = &filter.PaymentStatus
+	}
+	var search *string
+	if filter.Search != "" {
+		search = &filter.Search
+	}
+
 	orders, err := r.queries.GetAllOrders(ctx, sqlc.GetAllOrdersParams{
-		Column1: status,
-		Limit:   int32(limit),
-		Offset:  int32(offset),
+		Status:        status,
+		PaymentStatus: paymentStatus,
+		IsPreorder:    filter.IsPreOrder,
+		Search:        search,
+		Limit:         int32(limit),
+		Offset:        int32(offset),
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 
-	count, err := r.queries.CountOrders(ctx, status)
+	count, err := r.queries.CountOrders(ctx, sqlc.CountOrdersParams{
+		Status:        status,
+		PaymentStatus: paymentStatus,
+		IsPreorder:    filter.IsPreOrder,
+		Search:        search,
+	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -393,9 +422,102 @@ func (r *orderRepository) UpdateStatus(ctx context.Context, id, status string) e
 	})
 }
 
+func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, id, status string) error {
+	return r.queries.UpdateOrderPaymentStatus(ctx, sqlc.UpdateOrderPaymentStatusParams{
+		ID:            stringToUUID(id),
+		PaymentStatus: strPtr(status),
+	})
+}
+
 func (r *orderRepository) HasPurchasedProduct(ctx context.Context, userID, productID string) (bool, error) {
 	return r.queries.HasPurchasedProduct(ctx, sqlc.HasPurchasedProductParams{
 		UserID:    stringToUUID(userID),
 		ProductID: stringToUUID(productID),
 	})
+}
+
+func (r *orderRepository) CreateRefund(ctx context.Context, orderID string, amount float64, reason string, restock bool, createdBy *string) error {
+	var createdByUUID pgtype.UUID
+	if createdBy != nil {
+		createdByUUID = stringToUUID(*createdBy)
+	}
+
+	// 1. Create Refund Record
+	_, err := r.queries.CreateRefund(ctx, sqlc.CreateRefundParams{
+		OrderID:      stringToUUID(orderID),
+		Amount:       float64ToNumeric(amount),
+		Reason:       strPtr(reason),
+		RestockItems: restock,
+		CreatedBy:    createdByUUID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// 2. Update Order Totals
+	return r.queries.UpdateOrderRefundedAmount(ctx, sqlc.UpdateOrderRefundedAmountParams{
+		Amount: float64ToNumeric(amount),
+		ID:     stringToUUID(orderID),
+	})
+}
+
+func (r *orderRepository) CreateOrderHistory(ctx context.Context, history *domain.OrderHistory) error {
+	var createdBy pgtype.UUID
+	if history.CreatedBy != nil {
+		createdBy = stringToUUID(*history.CreatedBy)
+	}
+
+	_, err := r.queries.CreateOrderHistory(ctx, sqlc.CreateOrderHistoryParams{
+		OrderID:        stringToUUID(history.OrderID),
+		PreviousStatus: history.PreviousStatus,
+		NewStatus:      history.NewStatus,
+		Reason:         history.Reason,
+		CreatedBy:      createdBy,
+	})
+	return err
+}
+
+func (r *orderRepository) GetOrderHistory(ctx context.Context, orderID string) ([]domain.OrderHistory, error) {
+	rows, err := r.queries.GetOrderHistory(ctx, stringToUUID(orderID))
+	if err != nil {
+		return nil, err
+	}
+
+	var history []domain.OrderHistory
+	for _, row := range rows {
+		h := domain.OrderHistory{
+			ID:        uuidToString(row.ID),
+			OrderID:   uuidToString(row.OrderID),
+			NewStatus: row.NewStatus,
+			CreatedAt: row.CreatedAt.Time, // pgtype.Timestamptz has Time field
+		}
+		if row.PreviousStatus != nil {
+			h.PreviousStatus = row.PreviousStatus
+		}
+		if row.Reason != nil {
+			h.Reason = row.Reason
+		}
+		if row.CreatedBy.Valid {
+			uid := uuidToString(row.CreatedBy)
+			h.CreatedBy = &uid
+		}
+
+		if row.FirstName != nil || row.LastName != nil {
+			fname := ""
+			if row.FirstName != nil {
+				fname = *row.FirstName
+			}
+			lname := ""
+			if row.LastName != nil {
+				lname = *row.LastName
+			}
+			name := fname + " " + lname
+			h.CreatedName = &name
+		} else if row.Email != nil {
+			h.CreatedName = row.Email
+		}
+
+		history = append(history, h)
+	}
+	return history, nil
 }

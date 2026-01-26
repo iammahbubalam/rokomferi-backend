@@ -39,11 +39,35 @@ func (q *Queries) ClearCart(ctx context.Context, cartID pgtype.UUID) error {
 }
 
 const countOrders = `-- name: CountOrders :one
-SELECT COUNT(*) FROM orders WHERE ($1::text = '' OR status = $1)
+SELECT COUNT(*) 
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE 
+    ($1::text IS NULL OR o.status = $1) AND
+    ($2::text IS NULL OR o.payment_status = $2) AND
+    ($3::boolean IS NULL OR o.is_preorder = $3) AND
+    ($4::text IS NULL OR 
+        o.id::text ILIKE '%' || $4 || '%' OR 
+        u.email ILIKE '%' || $4 || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || $4 || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || $4 || '%'
+    )
 `
 
-func (q *Queries) CountOrders(ctx context.Context, dollar_1 string) (int64, error) {
-	row := q.db.QueryRow(ctx, countOrders, dollar_1)
+type CountOrdersParams struct {
+	Status        *string `json:"status"`
+	PaymentStatus *string `json:"payment_status"`
+	IsPreorder    *bool   `json:"is_preorder"`
+	Search        *string `json:"search"`
+}
+
+func (q *Queries) CountOrders(ctx context.Context, arg CountOrdersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countOrders,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.IsPreorder,
+		arg.Search,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -68,7 +92,7 @@ func (q *Queries) CreateCart(ctx context.Context, userID pgtype.UUID) (Cart, err
 const createOrder = `-- name: CreateOrder :one
 INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status, paid_amount, payment_details, is_preorder)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder
+RETURNING id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder, refunded_amount
 `
 
 type CreateOrderParams struct {
@@ -109,6 +133,42 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.PaidAmount,
 		&i.PaymentDetails,
 		&i.IsPreorder,
+		&i.RefundedAmount,
+	)
+	return i, err
+}
+
+const createOrderHistory = `-- name: CreateOrderHistory :one
+INSERT INTO order_history (order_id, previous_status, new_status, reason, created_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, order_id, previous_status, new_status, reason, created_by, created_at
+`
+
+type CreateOrderHistoryParams struct {
+	OrderID        pgtype.UUID `json:"order_id"`
+	PreviousStatus *string     `json:"previous_status"`
+	NewStatus      string      `json:"new_status"`
+	Reason         *string     `json:"reason"`
+	CreatedBy      pgtype.UUID `json:"created_by"`
+}
+
+func (q *Queries) CreateOrderHistory(ctx context.Context, arg CreateOrderHistoryParams) (OrderHistory, error) {
+	row := q.db.QueryRow(ctx, createOrderHistory,
+		arg.OrderID,
+		arg.PreviousStatus,
+		arg.NewStatus,
+		arg.Reason,
+		arg.CreatedBy,
+	)
+	var i OrderHistory
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.PreviousStatus,
+		&i.NewStatus,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -148,18 +208,30 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getAllOrders = `-- name: GetAllOrders :many
-SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, u.email, u.first_name, u.last_name
+SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, u.email, u.first_name, u.last_name
 FROM orders o
 JOIN users u ON u.id = o.user_id
-WHERE ($1::text = '' OR o.status = $1)
+WHERE 
+    ($3::text IS NULL OR o.status = $3) AND
+    ($4::text IS NULL OR o.payment_status = $4) AND
+    ($5::boolean IS NULL OR o.is_preorder = $5) AND
+    ($6::text IS NULL OR 
+        o.id::text ILIKE '%' || $6 || '%' OR 
+        u.email ILIKE '%' || $6 || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || $6 || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || $6 || '%'
+    )
 ORDER BY o.created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $1 OFFSET $2
 `
 
 type GetAllOrdersParams struct {
-	Column1 string `json:"column_1"`
-	Limit   int32  `json:"limit"`
-	Offset  int32  `json:"offset"`
+	Limit         int32   `json:"limit"`
+	Offset        int32   `json:"offset"`
+	Status        *string `json:"status"`
+	PaymentStatus *string `json:"payment_status"`
+	IsPreorder    *bool   `json:"is_preorder"`
+	Search        *string `json:"search"`
 }
 
 type GetAllOrdersRow struct {
@@ -175,13 +247,21 @@ type GetAllOrdersRow struct {
 	PaidAmount      pgtype.Numeric   `json:"paid_amount"`
 	PaymentDetails  []byte           `json:"payment_details"`
 	IsPreorder      bool             `json:"is_preorder"`
+	RefundedAmount  pgtype.Numeric   `json:"refunded_amount"`
 	Email           string           `json:"email"`
 	FirstName       *string          `json:"first_name"`
 	LastName        *string          `json:"last_name"`
 }
 
 func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]GetAllOrdersRow, error) {
-	rows, err := q.db.Query(ctx, getAllOrders, arg.Column1, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getAllOrders,
+		arg.Limit,
+		arg.Offset,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.IsPreorder,
+		arg.Search,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +282,7 @@ func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]G
 			&i.PaidAmount,
 			&i.PaymentDetails,
 			&i.IsPreorder,
+			&i.RefundedAmount,
 			&i.Email,
 			&i.FirstName,
 			&i.LastName,
@@ -383,7 +464,7 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder FROM orders WHERE id = $1
+SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder, refunded_amount FROM orders WHERE id = $1
 `
 
 func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error) {
@@ -402,27 +483,83 @@ func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, erro
 		&i.PaidAmount,
 		&i.PaymentDetails,
 		&i.IsPreorder,
+		&i.RefundedAmount,
 	)
 	return i, err
 }
 
+const getOrderHistory = `-- name: GetOrderHistory :many
+SELECT oh.id, oh.order_id, oh.previous_status, oh.new_status, oh.reason, oh.created_by, oh.created_at, u.first_name, u.last_name, u.email
+FROM order_history oh
+LEFT JOIN users u ON u.id = oh.created_by
+WHERE oh.order_id = $1
+ORDER BY oh.created_at DESC
+`
+
+type GetOrderHistoryRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	OrderID        pgtype.UUID        `json:"order_id"`
+	PreviousStatus *string            `json:"previous_status"`
+	NewStatus      string             `json:"new_status"`
+	Reason         *string            `json:"reason"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	FirstName      *string            `json:"first_name"`
+	LastName       *string            `json:"last_name"`
+	Email          *string            `json:"email"`
+}
+
+func (q *Queries) GetOrderHistory(ctx context.Context, orderID pgtype.UUID) ([]GetOrderHistoryRow, error) {
+	rows, err := q.db.Query(ctx, getOrderHistory, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetOrderHistoryRow{}
+	for rows.Next() {
+		var i GetOrderHistoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.PreviousStatus,
+			&i.NewStatus,
+			&i.Reason,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.FirstName,
+			&i.LastName,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getOrderItems = `-- name: GetOrderItems :many
-SELECT oi.id, oi.order_id, oi.product_id, oi.variant_id, oi.quantity, oi.price, p.name, p.slug, p.media
+SELECT oi.id, oi.order_id, oi.product_id, oi.variant_id, oi.quantity, oi.price, p.name, p.slug, p.media, v.name as variant_name, v.sku as variant_sku
 FROM order_items oi
 JOIN products p ON p.id = oi.product_id
+LEFT JOIN variants v ON v.id = oi.variant_id
 WHERE oi.order_id = $1
 `
 
 type GetOrderItemsRow struct {
-	ID        pgtype.UUID    `json:"id"`
-	OrderID   pgtype.UUID    `json:"order_id"`
-	ProductID pgtype.UUID    `json:"product_id"`
-	VariantID pgtype.UUID    `json:"variant_id"`
-	Quantity  int32          `json:"quantity"`
-	Price     pgtype.Numeric `json:"price"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug"`
-	Media     []byte         `json:"media"`
+	ID          pgtype.UUID    `json:"id"`
+	OrderID     pgtype.UUID    `json:"order_id"`
+	ProductID   pgtype.UUID    `json:"product_id"`
+	VariantID   pgtype.UUID    `json:"variant_id"`
+	Quantity    int32          `json:"quantity"`
+	Price       pgtype.Numeric `json:"price"`
+	Name        string         `json:"name"`
+	Slug        string         `json:"slug"`
+	Media       []byte         `json:"media"`
+	VariantName *string        `json:"variant_name"`
+	VariantSku  *string        `json:"variant_sku"`
 }
 
 func (q *Queries) GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error) {
@@ -444,6 +581,8 @@ func (q *Queries) GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]Get
 			&i.Name,
 			&i.Slug,
 			&i.Media,
+			&i.VariantName,
+			&i.VariantSku,
 		); err != nil {
 			return nil, err
 		}
@@ -456,7 +595,7 @@ func (q *Queries) GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]Get
 }
 
 const getOrdersByUserID = `-- name: GetOrdersByUserID :many
-SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder FROM orders WHERE user_id = $1 ORDER BY created_at DESC
+SELECT id, user_id, status, total_amount, shipping_address, payment_method, payment_status, created_at, updated_at, paid_amount, payment_details, is_preorder, refunded_amount FROM orders WHERE user_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error) {
@@ -481,6 +620,7 @@ func (q *Queries) GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]
 			&i.PaidAmount,
 			&i.PaymentDetails,
 			&i.IsPreorder,
+			&i.RefundedAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -513,6 +653,20 @@ func (q *Queries) HasPurchasedProduct(ctx context.Context, arg HasPurchasedProdu
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const updateOrderPaymentStatus = `-- name: UpdateOrderPaymentStatus :exec
+UPDATE orders SET payment_status = $2 WHERE id = $1
+`
+
+type UpdateOrderPaymentStatusParams struct {
+	ID            pgtype.UUID `json:"id"`
+	PaymentStatus *string     `json:"payment_status"`
+}
+
+func (q *Queries) UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderPaymentStatusParams) error {
+	_, err := q.db.Exec(ctx, updateOrderPaymentStatus, arg.ID, arg.PaymentStatus)
+	return err
 }
 
 const updateOrderStatus = `-- name: UpdateOrderStatus :exec

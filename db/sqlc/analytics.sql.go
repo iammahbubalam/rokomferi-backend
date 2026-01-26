@@ -15,15 +15,23 @@ const getDailySalesStats = `-- name: GetDailySalesStats :many
 SELECT date, total_revenue, total_orders, total_items_sold, avg_order_value, updated_at FROM daily_sales_stats
 WHERE date >= $1 AND date <= $2
 ORDER BY date ASC
+LIMIT $3 OFFSET $4
 `
 
 type GetDailySalesStatsParams struct {
 	Date   pgtype.Date `json:"date"`
 	Date_2 pgtype.Date `json:"date_2"`
+	Limit  int32       `json:"limit"`
+	Offset int32       `json:"offset"`
 }
 
 func (q *Queries) GetDailySalesStats(ctx context.Context, arg GetDailySalesStatsParams) ([]DailySalesStat, error) {
-	rows, err := q.db.Query(ctx, getDailySalesStats, arg.Date, arg.Date_2)
+	rows, err := q.db.Query(ctx, getDailySalesStats,
+		arg.Date,
+		arg.Date_2,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}

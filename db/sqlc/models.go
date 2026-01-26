@@ -138,6 +138,17 @@ type Order struct {
 	PaidAmount      pgtype.Numeric   `json:"paid_amount"`
 	PaymentDetails  []byte           `json:"payment_details"`
 	IsPreorder      bool             `json:"is_preorder"`
+	RefundedAmount  pgtype.Numeric   `json:"refunded_amount"`
+}
+
+type OrderHistory struct {
+	ID             pgtype.UUID        `json:"id"`
+	OrderID        pgtype.UUID        `json:"order_id"`
+	PreviousStatus *string            `json:"previous_status"`
+	NewStatus      string             `json:"new_status"`
+	Reason         *string            `json:"reason"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type OrderItem struct {
@@ -192,6 +203,16 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 	Revoked   bool             `json:"revoked"`
 	Device    *string          `json:"device"`
+}
+
+type Refund struct {
+	ID           pgtype.UUID      `json:"id"`
+	OrderID      pgtype.UUID      `json:"order_id"`
+	Amount       pgtype.Numeric   `json:"amount"`
+	Reason       *string          `json:"reason"`
+	RestockItems bool             `json:"restock_items"`
+	CreatedAt    pgtype.Timestamp `json:"created_at"`
+	CreatedBy    pgtype.UUID      `json:"created_by"`
 }
 
 type Review struct {

@@ -23,7 +23,7 @@ type Querier interface {
 	CountAllVariantsWithProduct(ctx context.Context, arg CountAllVariantsWithProductParams) (int64, error)
 	CountCoupons(ctx context.Context) (int64, error)
 	CountInventoryLogs(ctx context.Context, dollar_1 pgtype.UUID) (int64, error)
-	CountOrders(ctx context.Context, dollar_1 string) (int64, error)
+	CountOrders(ctx context.Context, arg CountOrdersParams) (int64, error)
 	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
 	CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error)
 	CountSearchProducts(ctx context.Context, arg CountSearchProductsParams) (int64, error)
@@ -34,8 +34,10 @@ type Querier interface {
 	CreateCoupon(ctx context.Context, arg CreateCouponParams) (Coupon, error)
 	CreateInventoryLog(ctx context.Context, arg CreateInventoryLogParams) (InventoryLog, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
+	CreateOrderHistory(ctx context.Context, arg CreateOrderHistoryParams) (OrderHistory, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error)
+	CreateRefund(ctx context.Context, arg CreateRefundParams) (Refund, error)
 	CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVariant(ctx context.Context, arg CreateVariantParams) (Variant, error)
@@ -91,6 +93,7 @@ type Querier interface {
 	// Variants below threshold (parameterized - no hardcoded limit)
 	GetLowStockProducts(ctx context.Context, arg GetLowStockProductsParams) ([]GetLowStockProductsRow, error)
 	GetOrderByID(ctx context.Context, id pgtype.UUID) (Order, error)
+	GetOrderHistory(ctx context.Context, orderID pgtype.UUID) ([]GetOrderHistoryRow, error)
 	GetOrderItems(ctx context.Context, orderID pgtype.UUID) ([]GetOrderItemsRow, error)
 	GetOrdersByUserID(ctx context.Context, userID pgtype.UUID) ([]Order, error)
 	GetProductByID(ctx context.Context, id pgtype.UUID) (Product, error)
@@ -102,6 +105,7 @@ type Querier interface {
 	GetProductsWithCategoryFilter(ctx context.Context, arg GetProductsWithCategoryFilterParams) ([]Product, error)
 	GetProductsWithPriceRange(ctx context.Context, arg GetProductsWithPriceRangeParams) ([]Product, error)
 	GetRefreshToken(ctx context.Context, token string) (RefreshToken, error)
+	GetRefundsByOrderID(ctx context.Context, orderID pgtype.UUID) ([]GetRefundsByOrderIDRow, error)
 	// Key performance indicators for a parameterized date range
 	GetRevenueKPIs(ctx context.Context, arg GetRevenueKPIsParams) (GetRevenueKPIsRow, error)
 	GetReviewByID(ctx context.Context, id pgtype.UUID) (Review, error)
@@ -140,6 +144,8 @@ type Querier interface {
 	UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error)
 	UpdateContentBlockSchedule(ctx context.Context, arg UpdateContentBlockScheduleParams) error
 	UpdateCoupon(ctx context.Context, arg UpdateCouponParams) error
+	UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderPaymentStatusParams) error
+	UpdateOrderRefundedAmount(ctx context.Context, arg UpdateOrderRefundedAmountParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error

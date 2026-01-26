@@ -108,6 +108,12 @@ func main() {
 	statsUC := usecase.NewStatsUsecase(pgxPool, memCache)
 	adminStatsHandler := v1.NewAdminStatsHandler(statsUC)
 
+	// Config Handler
+	configHandler := v1.NewConfigHandler(memCache)
+
+	// Config (Public)
+	mux.HandleFunc("GET /api/v1/config/enums", configHandler.GetEnums)
+
 	// --- Routes ---
 
 	// Auth
@@ -151,6 +157,9 @@ func main() {
 	// Admin Content
 	mux.Handle("PUT /api/v1/admin/content/{key}", adminMiddleware(contentHandler.UpsertContent))
 
+	// Admin Config
+	mux.Handle("GET /api/v1/admin/config/enums", adminMiddleware(configHandler.GetEnums))
+
 	// Admin Product Management
 	mux.Handle("GET /api/v1/admin/products", adminMiddleware(adminCatalogHandler.ListProducts))
 	mux.Handle("GET /api/v1/admin/products/{id}", adminMiddleware(adminCatalogHandler.GetProduct))
@@ -178,7 +187,12 @@ func main() {
 	mux.Handle("POST /api/v1/admin/collections/{id}/products", adminMiddleware(adminCatalogHandler.ManageCollectionProduct))
 
 	mux.Handle("GET /api/v1/admin/orders", adminMiddleware(adminOrderHandler.ListOrders))
+	mux.Handle("GET /api/v1/admin/orders/{id}", adminMiddleware(adminOrderHandler.GetOrder))
 	mux.Handle("PATCH /api/v1/admin/orders/{id}/status", adminMiddleware(adminOrderHandler.UpdateStatus))
+	mux.Handle("PATCH /api/v1/admin/orders/{id}/payment-status", adminMiddleware(adminOrderHandler.UpdatePaymentStatus))
+	mux.Handle("POST /api/v1/admin/orders/{id}/verify-payment", adminMiddleware(adminOrderHandler.VerifyPayment))
+	mux.Handle("POST /api/v1/admin/orders/{id}/refund", adminMiddleware(adminOrderHandler.RefundOrder))
+	mux.Handle("GET /api/v1/admin/orders/{id}/history", adminMiddleware(adminOrderHandler.GetOrderHistory))
 	mux.Handle("GET /api/v1/admin/users", adminMiddleware(authHandler.ListUsers))
 
 	// Admin Coupons

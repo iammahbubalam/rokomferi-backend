@@ -40,7 +40,7 @@ func parseInt32WithDefault(r *http.Request, param string, defaultVal int32) int3
 	return int32(val)
 }
 
-// GET /admin/stats/revenue?start=2024-01-01&end=2024-01-31
+// GET /admin/stats/revenue?start=2024-01-01&end=2024-01-31&limit=30&offset=0
 func (h *AdminStatsHandler) GetDailySales(w http.ResponseWriter, r *http.Request) {
 	start, err := parseRequiredDate(r, "start")
 	if err != nil {
@@ -54,7 +54,10 @@ func (h *AdminStatsHandler) GetDailySales(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	sales, err := h.statsUC.GetDailySales(r.Context(), start, end)
+	limit := parseInt32WithDefault(r, "limit", 30)
+	offset := parseInt32WithDefault(r, "offset", 0)
+
+	sales, err := h.statsUC.GetDailySales(r.Context(), start, end, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

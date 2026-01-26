@@ -33,24 +33,32 @@ func timeToPgTimestamp(t time.Time) pgtype.Timestamp {
 	return pgtype.Timestamp{Time: t, Valid: true}
 }
 
-// GetDailySales - L9: Validate inputs, frontend controls date range
-func (uc *StatsUsecase) GetDailySales(ctx context.Context, start, end time.Time) ([]sqlc.GetDailySalesRow, error) {
+// GetDailySales - L9: Validate inputs, frontend controls date range & pagination
+func (uc *StatsUsecase) GetDailySales(ctx context.Context, start, end time.Time, limit, offset int32) ([]sqlc.GetDailySalesRow, error) {
 	if end.Before(start) {
 		return nil, errors.New("end date must be after start date")
 	}
 	if end.Sub(start) > 365*24*time.Hour {
 		return nil, errors.New("date range cannot exceed 1 year (performance limit)")
 	}
+	if limit < 1 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
-	cacheKey := fmt.Sprintf("stats:daily_sales:%s:%s", start.Format("2006-01-02"), end.Format("2006-01-02"))
+	cacheKey := fmt.Sprintf("stats:daily_sales:%s:%s:%d:%d", start.Format("2006-01-02"), end.Format("2006-01-02"), limit, offset)
 
 	if val, found := uc.cache.Get(cacheKey); found {
 		return val.([]sqlc.GetDailySalesRow), nil
 	}
 
 	rows, err := uc.queries.GetDailySales(ctx, sqlc.GetDailySalesParams{
-		StartDate: timeToPgTimestamp(start),
-		EndDate:   timeToPgTimestamp(end),
+		StartDate:   timeToPgTimestamp(start),
+		EndDate:     timeToPgTimestamp(end),
+		LimitCount:  limit,
+		OffsetCount: offset,
 	})
 	if err != nil {
 		return nil, err

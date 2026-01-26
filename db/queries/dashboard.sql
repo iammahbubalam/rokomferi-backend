@@ -56,7 +56,8 @@ WHERE created_at >= sqlc.arg(start_date)::timestamp
   AND created_at <= sqlc.arg(end_date)::timestamp
   AND status NOT IN ('cancelled', 'returned')
 GROUP BY DATE(created_at)
-ORDER BY date DESC;
+ORDER BY date DESC
+LIMIT sqlc.arg(limit_count)::int OFFSET sqlc.arg(offset_count)::int;
 
 -- name: GetRevenueKPIs :one
 -- Key performance indicators for a parameterized date range

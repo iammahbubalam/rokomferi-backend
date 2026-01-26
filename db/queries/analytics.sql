@@ -11,7 +11,8 @@ SET total_revenue = EXCLUDED.total_revenue,
 -- name: GetDailySalesStats :many
 SELECT * FROM daily_sales_stats
 WHERE date >= $1 AND date <= $2
-ORDER BY date ASC;
+ORDER BY date ASC
+LIMIT $3 OFFSET $4;
 
 -- name: GetTotalRevenue :one
 SELECT COALESCE(SUM(total_revenue), 0)::numeric FROM daily_sales_stats;

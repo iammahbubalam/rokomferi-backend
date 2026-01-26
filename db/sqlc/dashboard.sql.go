@@ -114,11 +114,14 @@ WHERE created_at >= $1::timestamp
   AND status NOT IN ('cancelled', 'returned')
 GROUP BY DATE(created_at)
 ORDER BY date DESC
+LIMIT $4::int OFFSET $3::int
 `
 
 type GetDailySalesParams struct {
-	StartDate pgtype.Timestamp `json:"start_date"`
-	EndDate   pgtype.Timestamp `json:"end_date"`
+	StartDate   pgtype.Timestamp `json:"start_date"`
+	EndDate     pgtype.Timestamp `json:"end_date"`
+	OffsetCount int32            `json:"offset_count"`
+	LimitCount  int32            `json:"limit_count"`
 }
 
 type GetDailySalesRow struct {
@@ -130,7 +133,12 @@ type GetDailySalesRow struct {
 
 // Revenue aggregation by day with parameterized date range
 func (q *Queries) GetDailySales(ctx context.Context, arg GetDailySalesParams) ([]GetDailySalesRow, error) {
-	rows, err := q.db.Query(ctx, getDailySales, arg.StartDate, arg.EndDate)
+	rows, err := q.db.Query(ctx, getDailySales,
+		arg.StartDate,
+		arg.EndDate,
+		arg.OffsetCount,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

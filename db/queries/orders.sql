@@ -108,15 +108,39 @@ SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC;
 SELECT o.*, u.email, u.first_name, u.last_name
 FROM orders o
 JOIN users u ON u.id = o.user_id
-WHERE ($1::text = '' OR o.status = $1)
+WHERE 
+    (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')) AND
+    (sqlc.narg('payment_status')::text IS NULL OR o.payment_status = sqlc.narg('payment_status')) AND
+    (sqlc.narg('is_preorder')::boolean IS NULL OR o.is_preorder = sqlc.narg('is_preorder')) AND
+    (sqlc.narg('search')::text IS NULL OR 
+        o.id::text ILIKE '%' || sqlc.narg('search') || '%' OR 
+        u.email ILIKE '%' || sqlc.narg('search') || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || sqlc.narg('search') || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || sqlc.narg('search') || '%'
+    )
 ORDER BY o.created_at DESC
-LIMIT $2 OFFSET $3;
+LIMIT $1 OFFSET $2;
 
 -- name: CountOrders :one
-SELECT COUNT(*) FROM orders WHERE ($1::text = '' OR status = $1);
+SELECT COUNT(*) 
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE 
+    (sqlc.narg('status')::text IS NULL OR o.status = sqlc.narg('status')) AND
+    (sqlc.narg('payment_status')::text IS NULL OR o.payment_status = sqlc.narg('payment_status')) AND
+    (sqlc.narg('is_preorder')::boolean IS NULL OR o.is_preorder = sqlc.narg('is_preorder')) AND
+    (sqlc.narg('search')::text IS NULL OR 
+        o.id::text ILIKE '%' || sqlc.narg('search') || '%' OR 
+        u.email ILIKE '%' || sqlc.narg('search') || '%' OR 
+        o.payment_details->>'transaction_id' ILIKE '%' || sqlc.narg('search') || '%' OR
+        o.payment_details->>'sender_number' ILIKE '%' || sqlc.narg('search') || '%'
+    );
 
 -- name: UpdateOrderStatus :exec
 UPDATE orders SET status = $2 WHERE id = $1;
+
+-- name: UpdateOrderPaymentStatus :exec
+UPDATE orders SET payment_status = $2 WHERE id = $1;
 
 -- name: CreateOrderItem :one
 INSERT INTO order_items (order_id, product_id, variant_id, quantity, price)
@@ -124,9 +148,10 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetOrderItems :many
-SELECT oi.*, p.name, p.slug, p.media
+SELECT oi.*, p.name, p.slug, p.media, v.name as variant_name, v.sku as variant_sku
 FROM order_items oi
 JOIN products p ON p.id = oi.product_id
+LEFT JOIN variants v ON v.id = oi.variant_id
 WHERE oi.order_id = $1;
 
 -- name: HasPurchasedProduct :one
@@ -138,3 +163,15 @@ SELECT EXISTS (
       AND oi.product_id = $2
       AND o.status = 'delivered'
 );
+
+-- name: CreateOrderHistory :one
+INSERT INTO order_history (order_id, previous_status, new_status, reason, created_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: GetOrderHistory :many
+SELECT oh.*, u.first_name, u.last_name, u.email
+FROM order_history oh
+LEFT JOIN users u ON u.id = oh.created_by
+WHERE oh.order_id = $1
+ORDER BY oh.created_at DESC;

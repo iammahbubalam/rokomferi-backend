@@ -1,0 +1,2 @@
+ALTER TABLE orders DROP COLUMN IF EXISTS refunded_amount;
+DROP TABLE IF EXISTS refunds;
