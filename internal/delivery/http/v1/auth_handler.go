@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
+	"strconv"
 )
 
 type AuthHandler struct {
@@ -247,15 +248,43 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListUsers - Admin endpoint to get all users
+// ListUsers - Admin endpoint to get all users
 func (h *AuthHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.authUC.GetAllUsers(r.Context())
+	page := 1
+	limit := 10
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if val, err := strconv.Atoi(p); err == nil && val > 0 {
+			page = val
+		}
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 {
+			limit = val
+		}
+	}
+
+	offset := (page - 1) * limit
+	users, count, err := h.authUC.GetAllUsers(r.Context(), limit, offset)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Failed to list users", "error", err)
+		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
 		return
+	}
+
+	totalPages := 0
+	if count > 0 {
+		totalPages = int((count + int64(limit) - 1) / int64(limit))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"users": users,
+		"meta": map[string]interface{}{
+			"total":      count,
+			"page":       page,
+			"limit":      limit,
+			"totalPages": totalPages,
+		},
 	})
 }

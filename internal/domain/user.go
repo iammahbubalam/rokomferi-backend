@@ -61,8 +61,9 @@ type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetByID(ctx context.Context, id string) (*User, error)
-	GetAll(ctx context.Context) ([]*User, error)
+	GetAll(ctx context.Context, limit, offset int) ([]*User, int64, error)
 	Update(ctx context.Context, user *User) error
+
 	UpdateProfile(ctx context.Context, id, firstName, lastName, phone string) (*User, error)
 
 	// Addresses

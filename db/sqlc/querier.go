@@ -27,6 +27,7 @@ type Querier interface {
 	CountProducts(ctx context.Context, arg CountProductsParams) (int64, error)
 	CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error)
 	CountSearchProducts(ctx context.Context, arg CountSearchProductsParams) (int64, error)
+	CountUsers(ctx context.Context) (int64, error)
 	CreateAddress(ctx context.Context, arg CreateAddressParams) (Address, error)
 	CreateCart(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
@@ -136,7 +137,7 @@ type Querier interface {
 	ListCollectionSlugs(ctx context.Context) ([]ListCollectionSlugsRow, error)
 	ListCoupons(ctx context.Context, arg ListCouponsParams) ([]Coupon, error)
 	ListProductSlugs(ctx context.Context) ([]ListProductSlugsRow, error)
-	ListUsers(ctx context.Context) ([]User, error)
+	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	RemoveProductCategory(ctx context.Context, arg RemoveProductCategoryParams) error
 	RemoveProductCollection(ctx context.Context, arg RemoveProductCollectionParams) error
 	RemoveProductFromCollection(ctx context.Context, arg RemoveProductFromCollectionParams) error

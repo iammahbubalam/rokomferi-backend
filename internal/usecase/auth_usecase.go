@@ -266,6 +266,6 @@ func (u *AuthUsecase) GetUserByID(ctx context.Context, id string) (*domain.User,
 	return u.userRepo.GetByID(ctx, id)
 }
 
-func (u *AuthUsecase) GetAllUsers(ctx context.Context) ([]*domain.User, error) {
-	return u.userRepo.GetAll(ctx)
+func (u *AuthUsecase) GetAllUsers(ctx context.Context, limit, offset int) ([]*domain.User, int64, error) {
+	return u.userRepo.GetAll(ctx, limit, offset)
 }
