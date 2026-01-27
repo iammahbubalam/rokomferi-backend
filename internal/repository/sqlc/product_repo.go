@@ -443,12 +443,15 @@ func (r *productRepository) GetCollectionBySlug(ctx context.Context, slug string
 
 	// Get products for collection
 	products, err := r.queries.GetProductsForCollection(ctx, col.ID)
-	if err == nil {
+	if err == nil && len(products) > 0 {
 		collection.Products = make([]domain.Product, len(products))
+		productIDs := make([]pgtype.UUID, len(products))
 		for i, p := range products {
-			prod := sqlcProductToDomain(p)
-			collection.Products[i] = prod
+			productIDs[i] = p.ID
+			collection.Products[i] = sqlcProductToDomain(p)
 		}
+		// Enrich with variants to calculate correct stock
+		r.enrichVariants(ctx, collection.Products, productIDs)
 	}
 
 	return &collection, nil
