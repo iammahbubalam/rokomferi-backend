@@ -69,7 +69,15 @@ func (r *wishlistRepository) GetWishlistItems(ctx context.Context, wishlistID st
 				Slug:      row.Slug,
 				BasePrice: numericToFloat64(row.BasePrice),
 				SalePrice: numericToFloat64Ptr(row.SalePrice),
+				Stock:     int(row.TotalStock),
 			},
+		}
+
+		// Sync StockStatus
+		if item.Product.Stock <= 0 {
+			item.Product.StockStatus = "out_of_stock"
+		} else {
+			item.Product.StockStatus = "in_stock"
 		}
 
 		// TotalStock available in row.TotalStock if needed for UI, but domain.Product doesn't hold it.

@@ -9,11 +9,12 @@ import (
 )
 
 type ConfigHandler struct {
-	cache cache.CacheService
+	cache      cache.CacheService
+	configRepo domain.ConfigRepository
 }
 
-func NewConfigHandler(cache cache.CacheService) *ConfigHandler {
-	return &ConfigHandler{cache: cache}
+func NewConfigHandler(cache cache.CacheService, configRepo domain.ConfigRepository) *ConfigHandler {
+	return &ConfigHandler{cache: cache, configRepo: configRepo}
 }
 
 // GET /api/v1/config/enums
@@ -30,10 +31,13 @@ func (h *ConfigHandler) GetEnums(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	zones, _ := h.configRepo.GetActiveShippingZones(r.Context())
+
 	response := map[string]interface{}{
 		"orderStatuses":   domain.OrderStatuses,
 		"paymentStatuses": domain.PaymentStatuses,
 		"paymentMethods":  domain.PaymentMethods,
+		"shippingZones":   zones,
 	}
 
 	h.cache.Set(cacheKey, response, 1*time.Hour)

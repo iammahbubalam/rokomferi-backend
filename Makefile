@@ -51,7 +51,7 @@ migratecreate:
 # ==========================================
 
 sqlc:
-	sqlc generate
+	$(HOME)/go/bin/sqlc generate
 
 generate: sqlc
 	@echo "Code generation complete."

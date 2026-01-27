@@ -44,6 +44,7 @@ type Product struct {
 	BasePrice       float64      `json:"basePrice"`
 	SalePrice       *float64     `json:"salePrice"`
 	StockStatus     string       `json:"stockStatus"`
+	Stock           int          `json:"stock"`
 	IsFeatured      bool         `json:"isFeatured"`
 	IsActive        bool         `json:"isActive"`
 	Media           RawJSON      `json:"media"`

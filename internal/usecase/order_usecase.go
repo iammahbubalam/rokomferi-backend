@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/utils"
 )
@@ -10,14 +11,16 @@ import (
 type OrderUsecase struct {
 	orderRepo   domain.OrderRepository
 	productRepo domain.ProductRepository
-	couponRepo  domain.CouponRepository // L9: Added CouponRepo
+	configRepo  domain.ConfigRepository
+	couponRepo  domain.CouponRepository
 	txManager   domain.TransactionManager
 }
 
-func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, cRepo domain.CouponRepository, txManager domain.TransactionManager) *OrderUsecase {
+func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, configRepo domain.ConfigRepository, cRepo domain.CouponRepository, txManager domain.TransactionManager) *OrderUsecase {
 	return &OrderUsecase{
 		orderRepo:   repo,
 		productRepo: pRepo,
+		configRepo:  configRepo,
 		couponRepo:  cRepo,
 		txManager:   txManager,
 	}
@@ -26,10 +29,8 @@ func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository
 // --- Cart Logic ---
 
 func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Cart, error) {
-	// 🔥 OPTIMIZED: 1 DB call gets cart + all items with product details
 	items, err := u.orderRepo.GetCartWithItems(ctx, userID)
 	if err != nil {
-		// If query failed due to no cart existing, create one
 		if err.Error() == "no rows in result set" || err.Error() == "sql: no rows in result set" {
 			cart := &domain.Cart{
 				ID:     utils.GenerateUUID(),
@@ -43,17 +44,23 @@ func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Ca
 		return nil, err
 	}
 
-	// Build cart from items (use GetCartByUserID to get cart ID if needed)
 	cart, cartErr := u.orderRepo.GetCartByUserID(ctx, userID)
-	if cartErr != nil {
-		// Shouldn't happen since GetCartWithItems succeeded, but handle it
+	if cartErr != nil || cart == nil {
+		if cartErr != nil {
+			slog.Error("Usecase: GetMyCart - GetCartByUserID failed", "error", cartErr)
+		} else {
+			slog.Info("Usecase: GetMyCart - Cart not found, creating new one")
+		}
+
 		cart = &domain.Cart{
 			ID:     utils.GenerateUUID(),
 			UserID: &userID,
 		}
 		if createErr := u.orderRepo.CreateCart(ctx, cart); createErr != nil {
+			slog.Error("Usecase: GetMyCart - CreateCart failed", "error", createErr)
 			return nil, createErr
 		}
+		slog.Info("Usecase: GetMyCart - Created new cart", "cart_id", cart.ID)
 	}
 
 	cart.Items = items
@@ -61,33 +68,83 @@ func (u *OrderUsecase) GetMyCart(ctx context.Context, userID string) (*domain.Ca
 }
 
 func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID string, variantID *string, quantity int) (*domain.Cart, error) {
-	// Get cart and existing quantity
-	cart, err := u.GetMyCart(ctx, userID)
-	if err != nil {
-		return nil, err
+	slog.Info("Usecase: AddToCart", "user_id", userID, "product_id", productID, "variant_id", variantID, "quantity", quantity)
+
+	// L9: Enforce "Everything is a Variant" rule
+	if variantID == nil {
+		product, err := u.productRepo.GetProductByID(ctx, productID)
+		if err != nil {
+			return nil, fmt.Errorf("product not found: %w", err)
+		}
+		if len(product.Variants) == 1 {
+			// Auto-select the only variant
+			vID := product.Variants[0].ID
+			variantID = &vID
+			slog.Info("Usecase: AddToCart - Auto-resolved single variant", "variant_id", vID)
+		} else if len(product.Variants) > 1 {
+			return nil, fmt.Errorf("please select a variant option")
+		} else {
+			return nil, fmt.Errorf("product configuration error: item has no variants")
+		}
+	} else {
+		// Validation: Verify the variant actually belongs to the product?
+		// Basic Upsert will check FK, but maybe good to be safe.
+		// For now, trust the ID if provided.
 	}
 
-	// Check existing quantity
+	// Get cart (create if not exists)
+	cart, err := u.GetMyCart(ctx, userID)
+	if err != nil {
+		slog.Error("Usecase: AddToCart - GetMyCart failed", "error", err)
+		return nil, err
+	}
+	slog.Info("Usecase: AddToCart - Got Cart", "cart_id", cart.ID)
+
+	// Check existing quantity for the SPECIFIC variant
 	existingQty := 0
 	for _, item := range cart.Items {
 		if item.ProductID == productID {
-			existingQty = item.Quantity
-			break
+			// Check if variant matches (handling nil pointers)
+			match := false
+			v1 := "nil"
+			if item.VariantID != nil {
+				v1 = *item.VariantID
+			}
+			v2 := "nil"
+			if variantID != nil {
+				v2 = *variantID
+			}
+
+			if item.VariantID == nil && variantID == nil {
+				match = true
+			} else if item.VariantID != nil && variantID != nil && *item.VariantID == *variantID {
+				match = true
+			}
+
+			slog.Debug("Usecase: AddToCart - Matching variant", "item_variant", v1, "req_variant", v2, "match", match)
+
+			if match {
+				existingQty = item.Quantity
+				break
+			}
 		}
 	}
 
 	// Calculate new total
 	newTotal := existingQty + quantity
+	slog.Info("Usecase: AddToCart - Final calculation", "existing_qty", existingQty, "add_qty", quantity, "new_total", newTotal)
 
 	// Use atomic upsert with new total
-	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, variantID, newTotal)
-	if err != nil || len(items) == 0 {
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, cart.ID, productID, variantID, newTotal)
+	if err != nil {
+		slog.Error("Usecase: AddToCart - UpsertCartItemAtomic DB Error", "error", err)
 		if variantID != nil {
 			return nil, fmt.Errorf("insufficient stock or product unavailable for variant %s", *variantID)
 		} else {
 			return nil, fmt.Errorf("insufficient stock or product unavailable")
 		}
 	}
+	slog.Info("Usecase: AddToCart - Success", "items_count", len(items))
 
 	// Return cart with all items
 	return &domain.Cart{
@@ -98,9 +155,9 @@ func (u *OrderUsecase) AddToCart(ctx context.Context, userID string, productID s
 }
 
 // RemoveFromCart removes a product from the user's cart
-func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, productID string) (*domain.Cart, error) {
+func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, productID string, variantID string) (*domain.Cart, error) {
 	// Atomic O(1) Remove
-	if err := u.orderRepo.AtomicRemoveCartItem(ctx, userID, productID); err != nil {
+	if err := u.orderRepo.AtomicRemoveCartItem(ctx, userID, productID, variantID); err != nil {
 		return nil, err
 	}
 
@@ -109,13 +166,29 @@ func (u *OrderUsecase) RemoveFromCart(ctx context.Context, userID string, produc
 }
 
 func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string, productID string, variantID *string, quantity int) (*domain.Cart, error) {
+	variantIDStr := "nil"
+	if variantID != nil {
+		variantIDStr = *variantID
+	}
+	slog.Info("Usecase: UpdateCartItemQuantity", "user_id", userID, "product_id", productID, "variant_id", variantIDStr, "quantity", quantity)
+
 	if quantity <= 0 {
-		return u.RemoveFromCart(ctx, userID, productID)
+		if variantID == nil {
+			return nil, fmt.Errorf("variant_id required to remove item")
+		}
+		return u.RemoveFromCart(ctx, userID, productID, *variantID)
+	}
+
+	// Make sure we have a cart handle
+	cart, err := u.GetMyCart(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	// 🔥 ATOMIC: 1 DB CALL DOES EVERYTHING 🔥
-	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, productID, variantID, quantity)
+	items, err := u.orderRepo.UpsertCartItemAtomic(ctx, userID, cart.ID, productID, variantID, quantity)
 	if err != nil {
+		slog.Error("Usecase: UpdateCartItemQuantity - DB Error", "error", err)
 		return nil, fmt.Errorf("failed to update cart: %w", err)
 	}
 
@@ -127,7 +200,7 @@ func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string
 	}
 
 	// Success! Build cart from returned items
-	cart := &domain.Cart{
+	cart = &domain.Cart{
 		UserID: &userID,
 		Items:  items,
 	}
@@ -142,18 +215,12 @@ func (u *OrderUsecase) UpdateCartItemQuantity(ctx context.Context, userID string
 // --- Order Logic ---
 
 type CheckoutReq struct {
-	Address         domain.JSONB      `json:"address"`
-	Payment         string            `json:"paymentMethod"`
-	Items           []CheckoutItemReq `json:"items,omitempty"` // Optional: For Direct Checkout
-	CouponCode      string            `json:"couponCode,omitempty"`
-	PaymentTrxID    string            `json:"paymentTrxId,omitempty"`
-	PaymentProvider string            `json:"paymentProvider,omitempty"`
-	PaymentPhone    string            `json:"paymentPhone,omitempty"`
-}
-
-type CheckoutItemReq struct {
-	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
+	Address         domain.JSONB `json:"address"`
+	Payment         string       `json:"paymentMethod"`
+	CouponCode      string       `json:"couponCode,omitempty"`
+	PaymentTrxID    string       `json:"paymentTrxId,omitempty"`
+	PaymentProvider string       `json:"paymentProvider,omitempty"`
+	PaymentPhone    string       `json:"paymentPhone,omitempty"`
 }
 
 // ApplyCouponResp represents the result of applying a coupon
@@ -175,9 +242,10 @@ func (u *OrderUsecase) ApplyCoupon(ctx context.Context, userID, code string) (*A
 	// 2. Calculate Subtotal
 	var subtotal float64
 	for _, item := range cart.Items {
-		price := item.Product.BasePrice
-		if item.Product.SalePrice != nil {
-			price = *item.Product.SalePrice
+		// Use the resolved prices from CartItem
+		price := item.Price
+		if item.SalePrice != nil {
+			price = *item.SalePrice
 		}
 		subtotal += price * float64(item.Quantity)
 	}
@@ -216,27 +284,13 @@ func (u *OrderUsecase) ApplyCoupon(ctx context.Context, userID, code string) (*A
 }
 
 func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req CheckoutReq) (*domain.Order, error) {
-	// 1. Determine Source (Direct vs Cart)
-	var processItems []domain.CartItem
-	isDirect := false
-	var cartID string
-
-	if len(req.Items) > 0 {
-		isDirect = true
-		for _, item := range req.Items {
-			processItems = append(processItems, domain.CartItem{
-				ProductID: item.ProductID,
-				Quantity:  item.Quantity,
-			})
-		}
-	} else {
-		cart, err := u.GetMyCart(ctx, userID)
-		if err != nil || len(cart.Items) == 0 {
-			return nil, fmt.Errorf("cart is empty")
-		}
-		processItems = cart.Items
-		cartID = cart.ID
+	// 1. Get Cart Items
+	cart, err := u.GetMyCart(ctx, userID)
+	if err != nil || len(cart.Items) == 0 {
+		return nil, fmt.Errorf("cart is empty")
 	}
+	processItems := cart.Items
+	cartID := cart.ID
 
 	// 2. Calculate Total & Prepare Order Items & Check Pre-order
 	var total float64
@@ -322,30 +376,23 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		})
 	}
 
-	// 3. Apply Coupon (if provided)
-	if req.CouponCode != "" {
-		// Re-validate strictly inside checkout
-		res, err := u.couponRepo.ValidateCoupon(ctx, req.CouponCode, total)
-		if err != nil || res.ValidationStatus != "valid" {
-			return nil, fmt.Errorf("invalid or expired coupon: %s", req.CouponCode)
-		}
+	// 3. (Coupon Logic Removed)
 
-		discount := 0.0
-		if res.Type == "percentage" {
-			discount = total * (res.Value / 100)
-		} else {
-			discount = res.Value
-		}
-		if discount > total {
-			discount = total
-		}
-		total -= discount
-
-		// Note: We might want to store the discount/coupon in the order payload for records.
-		// Since we didn't add columns to Orders table yet, we assume TotalAmount reflects the discounted price.
+	// 4. Shipping Calculation
+	deliveryLocation := "inside_dhaka"
+	if loc, ok := req.Address["deliveryLocation"].(string); ok {
+		deliveryLocation = loc
 	}
 
-	// 4. Pre-Order Validation
+	zone, zoneErr := u.configRepo.GetShippingZoneByKey(ctx, deliveryLocation)
+	if zoneErr != nil {
+		slog.Error("Usecase: Checkout - Shipping configuration not found", "location", deliveryLocation, "error", zoneErr)
+		return nil, fmt.Errorf("shipping configuration for %s not found", deliveryLocation)
+	}
+	shippingFee := zone.Cost
+	total += shippingFee
+
+	// 5. Pre-Order Validation
 	paymentDetails := domain.JSONB{}
 	paymentStatus := "pending"
 	paidAmount := 0.0
@@ -363,6 +410,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			"transaction_id":   req.PaymentTrxID,
 			"sender_number":    req.PaymentPhone,
 			"deposit_required": preOrderDepositRequired,
+			"shipping_fee":     shippingFee,
 		}
 		paymentDetails = domain.JSONB(detailsMap)
 	}
@@ -372,6 +420,7 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		UserID:          userID,
 		Status:          "pending",
 		TotalAmount:     total,
+		ShippingFee:     shippingFee,
 		ShippingAddress: req.Address,
 		PaymentMethod:   req.Payment,
 		PaymentStatus:   paymentStatus,
@@ -381,8 +430,12 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 		Items:           orderItems,
 	}
 
-	// 5. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
-	err := u.txManager.Do(ctx, func(txCtx context.Context) error {
+	if isPreOrderOrder {
+		order.Status = "pending_verification"
+	}
+
+	// 6. Transaction: Create Order, Update Stock, Increment Coupon, Clear Cart
+	err = u.txManager.Do(ctx, func(txCtx context.Context) error {
 		if err := u.orderRepo.CreateOrder(txCtx, order); err != nil {
 			return err
 		}
@@ -397,19 +450,10 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 			}
 		}
 
-		// Increment Coupon Logic
-		if req.CouponCode != "" {
-			// We need the ID. ValidateCoupon gives us the result.
-			// Ideally we fetch it or use the result from earlier if we refactored.
-			// For safety/speed reuse the fetch:
-			coupon, err := u.couponRepo.GetCouponByCode(txCtx, req.CouponCode)
-			if err == nil {
-				u.couponRepo.IncrementCouponUsage(txCtx, coupon.ID)
-			}
-		}
+		// (Coupon Increment Logic Removed)
 
 		// Clear Cart
-		if !isDirect && cartID != "" {
+		if cartID != "" {
 			if err := u.orderRepo.ClearCart(txCtx, cartID); err != nil {
 				return err
 			}

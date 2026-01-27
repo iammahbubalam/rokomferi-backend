@@ -8,7 +8,6 @@ import (
 
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/internal/usecase"
-	"rokomferi-backend/pkg/utils"
 )
 
 type OrderHandler struct {
@@ -57,6 +56,7 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
+	slog.Info("Handler: AddToCart Request", "user_id", user.ID, "product_id", req.ProductID, "variant_id", *req.VariantID, "quantity", req.Quantity)
 
 	// L9: Validate quantity bounds
 	if req.Quantity <= 0 {
@@ -71,7 +71,18 @@ func (h *OrderHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	cart, err := h.orderUC.AddToCart(r.Context(), user.ID, req.ProductID, req.VariantID, req.Quantity)
 	if err != nil {
 		slog.Error("AddToCart failed", "user_id", user.ID, "product_id", req.ProductID, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		statusCode := http.StatusInternalServerError
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "insufficient stock") || strings.Contains(errMsg, "out of stock") || strings.Contains(errMsg, "product unavailable") || strings.Contains(errMsg, "not found") {
+			statusCode = http.StatusBadRequest
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": errMsg,
+		})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -89,8 +100,13 @@ func (h *OrderHandler) RemoveFromCart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Product ID required", http.StatusBadRequest)
 		return
 	}
+	variantID := r.URL.Query().Get("variantId")
+	if variantID == "" {
+		http.Error(w, "Variant ID required", http.StatusBadRequest)
+		return
+	}
 
-	cart, err := h.orderUC.RemoveFromCart(r.Context(), user.ID, productID)
+	cart, err := h.orderUC.RemoveFromCart(r.Context(), user.ID, productID, variantID)
 	if err != nil {
 		slog.Error("RemoveFromCart failed", "user_id", user.ID, "product_id", productID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -116,6 +132,7 @@ func (h *OrderHandler) UpdateCart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
+	slog.Info("Handler: UpdateCart Request", "user_id", user.ID, "product_id", req.ProductID, "variant_id", *req.VariantID, "quantity", req.Quantity)
 
 	cart, err := h.orderUC.UpdateCartItemQuantity(r.Context(), user.ID, req.ProductID, req.VariantID, req.Quantity)
 	if err != nil {
@@ -192,29 +209,10 @@ type ApplyCouponReq struct {
 }
 
 func (h *OrderHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(domain.UserContextKey).(*domain.User)
-	if !ok {
-		utils.WriteError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
-	userId := user.ID
-
-	var req ApplyCouponReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.WriteError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if req.CouponCode == "" {
-		utils.WriteError(w, http.StatusBadRequest, "Coupon code is required")
-		return
-	}
-
-	resp, err := h.orderUC.ApplyCoupon(r.Context(), userId, req.CouponCode)
-	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	utils.WriteJSON(w, http.StatusOK, resp)
+	// Coupon system is deactivated
+	w.WriteHeader(http.StatusGone)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Coupon system is currently deactivated",
+		"valid":   "false",
+	})
 }

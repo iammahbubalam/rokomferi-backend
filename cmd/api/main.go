@@ -40,6 +40,7 @@ func main() {
 	userRepo := sqlcrepo.NewUserRepository(pgxPool)
 	productRepo := sqlcrepo.NewProductRepository(pgxPool)
 	orderRepo := sqlcrepo.NewOrderRepository(pgxPool)
+	configRepo := sqlcrepo.NewConfigRepository(pgxPool)
 	searchRepo := sqlcrepo.NewSearchRepository(pgxPool)
 	txManager := sqlcrepo.NewTransactionManager(pgxPool)
 	couponRepo := sqlcrepo.NewCouponRepository(pgxPool)
@@ -87,7 +88,7 @@ func main() {
 	adminCatalogHandler := v1.NewAdminCatalogHandler(catalogUC)
 
 	// Order Module
-	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, couponRepo, txManager)
+	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, configRepo, couponRepo, txManager)
 	orderHandler := v1.NewOrderHandler(orderUC, cfg.MaxCartQuantity)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 
@@ -109,12 +110,17 @@ func main() {
 	adminStatsHandler := v1.NewAdminStatsHandler(statsUC)
 
 	// Config Handler
-	configHandler := v1.NewConfigHandler(memCache)
+	configHandler := v1.NewConfigHandler(memCache, configRepo)
+	adminConfigHandler := v1.NewAdminConfigHandler(memCache, configRepo)
 
 	// Config (Public)
 	mux.HandleFunc("GET /api/v1/config/enums", configHandler.GetEnums)
 
-	// --- Routes ---
+	// Config (Admin)
+	mux.Handle("GET /api/v1/admin/config/shipping-zones", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminConfigHandler.GetAllShippingZones))))
+	mux.Handle("POST /api/v1/admin/config/shipping-zones", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminConfigHandler.CreateShippingZone))))
+	mux.Handle("PATCH /api/v1/admin/config/shipping-zones/{id}", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminConfigHandler.UpdateShippingZone))))
+	mux.Handle("DELETE /api/v1/admin/config/shipping-zones/{id}", middleware.AuthMiddleware(middleware.AdminMiddleware(http.HandlerFunc(adminConfigHandler.DeleteShippingZone))))
 
 	// Auth
 	mux.HandleFunc("POST /api/v1/auth/google", authHandler.GoogleLogin)
@@ -196,21 +202,20 @@ func main() {
 	mux.Handle("GET /api/v1/admin/users", adminMiddleware(authHandler.ListUsers))
 
 	// Admin Coupons
-	couponUC := usecase.NewCouponUsecase(couponRepo)
-	adminCouponHandler := v1.NewAdminCouponHandler(couponUC)
-	mux.Handle("GET /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.ListCoupons))
-	mux.Handle("GET /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.GetCoupon))
-	mux.Handle("POST /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.CreateCoupon))
-	mux.Handle("PUT /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.UpdateCoupon))
-	mux.Handle("DELETE /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.DeleteCoupon))
+	// couponUC := usecase.NewCouponUsecase(couponRepo)
+	// adminCouponHandler := v1.NewAdminCouponHandler(couponUC)
+	// mux.Handle("GET /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.ListCoupons))
+	// mux.Handle("GET /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.GetCoupon))
+	// mux.Handle("POST /api/v1/admin/coupons", adminMiddleware(adminCouponHandler.CreateCoupon))
+	// mux.Handle("PUT /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.UpdateCoupon))
+	// mux.Handle("DELETE /api/v1/admin/coupons/{id}", adminMiddleware(adminCouponHandler.DeleteCoupon))
 
 	// Cart & Order (Protected)
 	mux.Handle("GET /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetCart)))
-
 	mux.Handle("POST /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.AddToCart)))
 	mux.Handle("PUT /api/v1/cart", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.UpdateCart)))
 	mux.Handle("DELETE /api/v1/cart/{productId}", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.RemoveFromCart)))
-	mux.Handle("POST /api/v1/cart/coupon", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.ApplyCoupon)))
+	// mux.Handle("POST /api/v1/cart/coupon", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.ApplyCoupon)))
 	mux.Handle("POST /api/v1/checkout", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.Checkout)))
 	mux.Handle("GET /api/v1/orders", middleware.AuthMiddleware(http.HandlerFunc(orderHandler.GetMyOrders)))
 

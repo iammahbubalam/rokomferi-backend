@@ -39,6 +39,7 @@ type Querier interface {
 	CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error)
 	CreateRefund(ctx context.Context, arg CreateRefundParams) (Refund, error)
 	CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error)
+	CreateShippingZone(ctx context.Context, arg CreateShippingZoneParams) (ShippingZone, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVariant(ctx context.Context, arg CreateVariantParams) (Variant, error)
 	CreateWishlist(ctx context.Context, userID pgtype.UUID) (Wishlist, error)
@@ -48,16 +49,19 @@ type Querier interface {
 	DeleteCoupon(ctx context.Context, id pgtype.UUID) error
 	DeleteProduct(ctx context.Context, id pgtype.UUID) error
 	DeleteReview(ctx context.Context, id pgtype.UUID) error
+	DeleteShippingZone(ctx context.Context, id int32) error
 	DeleteVariant(ctx context.Context, id pgtype.UUID) error
 	DeleteVariantsByProductID(ctx context.Context, productID pgtype.UUID) error
 	GetActiveChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
 	GetActiveCollections(ctx context.Context) ([]Collection, error)
 	GetActiveContentBlock(ctx context.Context, sectionKey string) (ContentBlock, error)
 	GetActiveNavCategories(ctx context.Context) ([]Category, error)
+	GetActiveShippingZones(ctx context.Context) ([]ShippingZone, error)
 	GetAddressesByUserID(ctx context.Context, userID pgtype.UUID) ([]Address, error)
 	GetAllCategories(ctx context.Context) ([]Category, error)
 	GetAllCollections(ctx context.Context) ([]Collection, error)
 	GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]GetAllOrdersRow, error)
+	GetAllShippingZones(ctx context.Context) ([]ShippingZone, error)
 	GetAllVariantsWithProduct(ctx context.Context, arg GetAllVariantsWithProductParams) ([]GetAllVariantsWithProductRow, error)
 	GetCartByUserID(ctx context.Context, userID pgtype.UUID) (Cart, error)
 	GetCartItemByProductID(ctx context.Context, arg GetCartItemByProductIDParams) (CartItem, error)
@@ -111,6 +115,8 @@ type Querier interface {
 	GetReviewByID(ctx context.Context, id pgtype.UUID) (Review, error)
 	GetReviewsByProductID(ctx context.Context, productID pgtype.UUID) ([]GetReviewsByProductIDRow, error)
 	GetRootCategories(ctx context.Context) ([]Category, error)
+	GetShippingZoneByID(ctx context.Context, id int32) (ShippingZone, error)
+	GetShippingZoneByKey(ctx context.Context, key string) (ShippingZone, error)
 	// Best-selling products by quantity (parameterized date range and limit)
 	GetTopSellingProducts(ctx context.Context, arg GetTopSellingProductsParams) ([]GetTopSellingProductsRow, error)
 	GetTotalRevenue(ctx context.Context) (pgtype.Numeric, error)
@@ -149,6 +155,8 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	UpdateProductStatus(ctx context.Context, arg UpdateProductStatusParams) error
+	UpdateShippingZone(ctx context.Context, arg UpdateShippingZoneParams) (ShippingZone, error)
+	UpdateShippingZoneCost(ctx context.Context, arg UpdateShippingZoneCostParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVariant(ctx context.Context, arg UpdateVariantParams) (Variant, error)

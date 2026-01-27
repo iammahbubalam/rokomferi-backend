@@ -641,22 +641,42 @@ func (r *productRepository) enrichVariants(ctx context.Context, products []domai
 	variantRows, err := r.queries.GetVariantsByProductIDs(ctx, productIDs)
 	if err == nil && len(variantRows) > 0 {
 		prodVarMap := make(map[string][]domain.Variant)
+		prodStockMap := make(map[string]int)
+
 		for _, v := range variantRows {
 			if v.ProductID.Valid {
 				pid := uuidToString(v.ProductID)
-				prodVarMap[pid] = append(prodVarMap[pid], sqlcVariantToDomain(v))
+				variant := sqlcVariantToDomain(v)
+				prodVarMap[pid] = append(prodVarMap[pid], variant)
+				prodStockMap[pid] += variant.Stock
 			}
 		}
+
 		for i := range products {
-			if vars, ok := prodVarMap[products[i].ID]; ok {
+			pid := products[i].ID
+			if vars, ok := prodVarMap[pid]; ok {
 				products[i].Variants = vars
+				products[i].Stock = prodStockMap[pid]
+
+				// L9: Sync StockStatus if it's nil or out of sync
+				if products[i].StockStatus == "" || products[i].StockStatus == "in_stock" {
+					if products[i].Stock <= 0 {
+						products[i].StockStatus = "out_of_stock"
+					} else {
+						products[i].StockStatus = "in_stock"
+					}
+				}
 			} else {
 				products[i].Variants = []domain.Variant{}
+				products[i].Stock = 0
+				products[i].StockStatus = "out_of_stock"
 			}
 		}
 	} else {
 		for i := range products {
 			products[i].Variants = []domain.Variant{}
+			products[i].Stock = 0
+			products[i].StockStatus = "out_of_stock"
 		}
 	}
 }
@@ -762,8 +782,21 @@ func (r *productRepository) GetProductBySlug(ctx context.Context, slug string) (
 	// Load variants
 	variants, _ := r.queries.GetVariantsByProductID(ctx, p.ID)
 	prod.Variants = make([]domain.Variant, len(variants))
+	totalStock := 0
 	for i, v := range variants {
-		prod.Variants[i] = sqlcVariantToDomain(v)
+		variant := sqlcVariantToDomain(v)
+		prod.Variants[i] = variant
+		totalStock += variant.Stock
+	}
+	prod.Stock = totalStock
+
+	// Sync StockStatus
+	if prod.StockStatus == "" || prod.StockStatus == "in_stock" {
+		if prod.Stock <= 0 {
+			prod.StockStatus = "out_of_stock"
+		} else {
+			prod.StockStatus = "in_stock"
+		}
 	}
 
 	// Load categories (Optimized Batch Fetch)
@@ -811,8 +844,21 @@ func (r *productRepository) GetProductByID(ctx context.Context, id string) (*dom
 	// Load variants
 	variants, _ := r.queries.GetVariantsByProductID(ctx, p.ID)
 	prod.Variants = make([]domain.Variant, len(variants))
+	totalStock := 0
 	for i, v := range variants {
-		prod.Variants[i] = sqlcVariantToDomain(v)
+		variant := sqlcVariantToDomain(v)
+		prod.Variants[i] = variant
+		totalStock += variant.Stock
+	}
+	prod.Stock = totalStock
+
+	// Sync StockStatus
+	if prod.StockStatus == "" || prod.StockStatus == "in_stock" {
+		if prod.Stock <= 0 {
+			prod.StockStatus = "out_of_stock"
+		} else {
+			prod.StockStatus = "in_stock"
+		}
 	}
 
 	// Load categories

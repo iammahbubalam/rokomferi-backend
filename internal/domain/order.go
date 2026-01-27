@@ -25,12 +25,16 @@ type Cart struct {
 }
 
 type CartItem struct {
-	ID        string  `json:"id"`
-	CartID    string  `json:"cartId"`
-	ProductID string  `json:"productId"`
-	Product   Product `json:"product"`
-	VariantID *string `json:"variantId"`
-	Quantity  int     `json:"quantity"`
+	ID           string   `json:"id"`
+	CartID       string   `json:"cartId"`
+	ProductID    string   `json:"productId"`
+	Product      Product  `json:"product"`
+	VariantID    *string  `json:"variantId"`
+	VariantName  *string  `json:"variantName"`
+	VariantImage *string  `json:"variantImage"`
+	Quantity     int      `json:"quantity"`
+	Price        float64  `json:"price"`     // Effective price
+	SalePrice    *float64 `json:"salePrice"` // Effective sale price (if any)
 }
 
 // --- Order Entities ---
@@ -41,6 +45,7 @@ type Order struct {
 	User            User        `json:"user"`
 	Status          string      `json:"status"` // pending, processing, shipped, delivered, cancelled
 	TotalAmount     float64     `json:"totalAmount"`
+	ShippingFee     float64     `json:"shippingFee"`
 	ShippingAddress JSONB       `json:"shippingAddress"`
 	PaymentMethod   string      `json:"paymentMethod"`
 	PaymentStatus   string      `json:"paymentStatus"`
@@ -88,8 +93,8 @@ type OrderRepository interface {
 	GetCartByUserID(ctx context.Context, userID string) (*Cart, error)
 	CreateCart(ctx context.Context, cart *Cart) error
 	GetCartWithItems(ctx context.Context, userID string) ([]CartItem, error)
-	UpsertCartItemAtomic(ctx context.Context, userID, productID string, variantID *string, quantity int) ([]CartItem, error)
-	AtomicRemoveCartItem(ctx context.Context, userID, productID string) error
+	UpsertCartItemAtomic(ctx context.Context, userID, cartID, productID string, variantID *string, quantity int) ([]CartItem, error)
+	AtomicRemoveCartItem(ctx context.Context, userID, productID, variantID string) error
 	ClearCart(ctx context.Context, cartID string) error
 
 	// Refunds & History

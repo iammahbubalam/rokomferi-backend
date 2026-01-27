@@ -139,6 +139,7 @@ type Order struct {
 	PaymentDetails  []byte           `json:"payment_details"`
 	IsPreorder      bool             `json:"is_preorder"`
 	RefundedAmount  pgtype.Numeric   `json:"refunded_amount"`
+	ShippingFee     pgtype.Numeric   `json:"shipping_fee"`
 }
 
 type OrderHistory struct {
@@ -222,6 +223,16 @@ type Review struct {
 	Rating    int32            `json:"rating"`
 	Comment   *string          `json:"comment"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
+type ShippingZone struct {
+	ID        int32            `json:"id"`
+	Key       string           `json:"key"`
+	Label     string           `json:"label"`
+	Cost      pgtype.Numeric   `json:"cost"`
+	IsActive  bool             `json:"is_active"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+	UpdatedAt pgtype.Timestamp `json:"updated_at"`
 }
 
 type User struct {

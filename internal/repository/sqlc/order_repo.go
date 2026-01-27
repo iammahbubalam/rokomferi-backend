@@ -72,6 +72,7 @@ func sqlcOrderToDomain(o sqlc.Order, items []sqlc.GetOrderItemsRow) *domain.Orde
 		PaymentMethod: ptrString(o.PaymentMethod),
 		PaymentStatus: ptrString(o.PaymentStatus),
 		PaidAmount:    numericToFloat64(o.PaidAmount),
+		ShippingFee:   numericToFloat64(o.ShippingFee),
 		IsPreOrder:    o.IsPreorder,
 		CreatedAt:     pgtimeToTime(o.CreatedAt),
 		UpdatedAt:     pgtimeToTime(o.UpdatedAt),
@@ -180,9 +181,35 @@ func (r *orderRepository) GetCartWithItems(ctx context.Context, userID string) (
 			},
 		}
 
+		if row.Stock != nil {
+			item.Product.Stock = int(*row.Stock)
+		}
+		if row.StockStatus != nil {
+			item.Product.StockStatus = *row.StockStatus
+		}
+
 		if row.VariantID.Valid {
 			vid := uuidToString(row.VariantID)
 			item.VariantID = &vid
+			item.VariantName = row.VariantName
+			if len(row.VariantImages) > 0 {
+				item.VariantImage = &row.VariantImages[0]
+			}
+		}
+
+		// RESOLVE Effective Price (Variant Price > Product Base)
+		item.Price = numericToFloat64(row.BasePrice)
+		if row.VariantPrice.Valid {
+			item.Price = numericToFloat64(row.VariantPrice)
+		}
+
+		// RESOLVE Effective Sale Price (Variant Sale > Product Sale)
+		if row.VariantSalePrice.Valid {
+			s := numericToFloat64(row.VariantSalePrice)
+			item.SalePrice = &s
+		} else if row.SalePrice.Valid {
+			s := numericToFloat64(row.SalePrice)
+			item.SalePrice = &s
 		}
 
 		if len(row.Media) > 0 {
@@ -196,13 +223,14 @@ func (r *orderRepository) GetCartWithItems(ctx context.Context, userID string) (
 	return items, nil
 }
 
-func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, productID string, variantID *string, quantity int) ([]domain.CartItem, error) {
+func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, cartID, productID string, variantID *string, quantity int) ([]domain.CartItem, error) {
 	var variantUUID pgtype.UUID
 	if variantID != nil {
 		variantUUID = stringToUUID(*variantID)
 	}
 
 	rows, err := r.queries.UpsertCartItemAtomic(ctx, sqlc.UpsertCartItemAtomicParams{
+		CartID:    stringToUUID(cartID),
 		UserID:    stringToUUID(userID),
 		ProductID: stringToUUID(productID),
 		VariantID: variantUUID,
@@ -216,12 +244,12 @@ func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, prod
 	items := make([]domain.CartItem, len(rows))
 	for i, row := range rows {
 		items[i] = domain.CartItem{
-			ID:        row.ID.String(),
-			CartID:    row.CartID.String(),
-			ProductID: row.ProductID.String(),
+			ID:        uuidToString(row.ID),
+			CartID:    uuidToString(row.CartID),
+			ProductID: uuidToString(row.ProductID),
 			Quantity:  int(row.Quantity),
 			Product: domain.Product{
-				ID:        row.ProductID.String(),
+				ID:        uuidToString(row.ProductID),
 				Name:      row.Name,
 				Slug:      row.Slug,
 				BasePrice: numericToFloat64(row.BasePrice),
@@ -231,7 +259,27 @@ func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, prod
 		if row.VariantID.Valid {
 			vid := uuidToString(row.VariantID)
 			items[i].VariantID = &vid
+			items[i].VariantName = &row.VariantName
+			if len(row.VariantImages) > 0 {
+				items[i].VariantImage = &row.VariantImages[0]
+			}
 		}
+
+		// RESOLVE Effective Price (Variant Price > Product Base)
+		items[i].Price = numericToFloat64(row.BasePrice)
+		if row.VariantPrice.Valid {
+			items[i].Price = numericToFloat64(row.VariantPrice)
+		}
+
+		// RESOLVE Effective Sale Price (Variant Sale > Product Sale)
+		if row.VariantSalePrice.Valid {
+			s := numericToFloat64(row.VariantSalePrice)
+			items[i].SalePrice = &s
+		} else if row.SalePrice.Valid {
+			s := numericToFloat64(row.SalePrice)
+			items[i].SalePrice = &s
+		}
+
 		if len(row.Media) > 0 {
 			items[i].Product.Media = domain.RawJSON(row.Media)
 			mapMediaToImages(&items[i].Product)
@@ -241,10 +289,11 @@ func (r *orderRepository) UpsertCartItemAtomic(ctx context.Context, userID, prod
 	return items, nil
 }
 
-func (r *orderRepository) AtomicRemoveCartItem(ctx context.Context, userID, productID string) error {
+func (r *orderRepository) AtomicRemoveCartItem(ctx context.Context, userID, productID, variantID string) error {
 	return r.queries.AtomicRemoveCartItem(ctx, sqlc.AtomicRemoveCartItemParams{
 		UserID:    stringToUUID(userID),
 		ProductID: stringToUUID(productID),
+		VariantID: stringToUUID(variantID),
 	})
 }
 
@@ -262,6 +311,7 @@ func (r *orderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 		UserID:          stringToUUID(order.UserID),
 		Status:          order.Status,
 		TotalAmount:     float64ToNumeric(order.TotalAmount),
+		ShippingFee:     float64ToNumeric(order.ShippingFee),
 		ShippingAddress: shippingAddrBytes,
 		PaymentMethod:   strPtr(order.PaymentMethod),
 		PaymentStatus:   strPtr(order.PaymentStatus),
@@ -391,6 +441,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 			PaymentMethod: ptrString(o.PaymentMethod),
 			PaymentStatus: ptrString(o.PaymentStatus),
 			PaidAmount:    numericToFloat64(o.PaidAmount),
+			ShippingFee:   numericToFloat64(o.ShippingFee),
 			IsPreOrder:    o.IsPreorder,
 			CreatedAt:     pgtimeToTime(o.CreatedAt),
 			UpdatedAt:     pgtimeToTime(o.UpdatedAt),

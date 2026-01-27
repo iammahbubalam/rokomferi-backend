@@ -24,8 +24,13 @@ SELECT
     p.base_price,
     p.sale_price,
     p.media,
+    p.stock_status,
     v.stock,
-    v.sku as variant_sku
+    v.sku as variant_sku,
+    v.name as variant_name,
+    v.images as variant_images,
+    v.price as variant_price,
+    v.sale_price as variant_sale_price
 FROM carts c
 LEFT JOIN cart_items ci ON c.id = ci.cart_id
 LEFT JOIN products p ON ci.product_id = p.id
@@ -40,25 +45,27 @@ SELECT * FROM cart_items WHERE cart_id = $1 AND product_id = $2;
 -- L9 FIX: Simplified atomic upsert without expression-based conflict target
 WITH 
   user_cart AS (
-    SELECT id FROM carts WHERE user_id = sqlc.arg(user_id)
+    SELECT c.id FROM carts c
+    WHERE c.id = sqlc.arg(cart_id) AND c.user_id = sqlc.arg(user_id)
   ),
   stock_valid AS (
     SELECT v.id FROM variants v
     JOIN products p ON p.id = v.product_id
     WHERE v.id = sqlc.arg(variant_id)
-      AND v.stock >= sqlc.arg(quantity)
+      AND (v.stock >= sqlc.arg(quantity) OR p.stock_status = 'pre_order')
       AND p.is_active = TRUE
   ),
   existing_item AS (
     SELECT ci.id FROM cart_items ci
-    JOIN user_cart uc ON ci.cart_id = uc.id
-    WHERE ci.product_id = sqlc.arg(product_id)
+    WHERE ci.cart_id = sqlc.arg(cart_id)
+      AND ci.product_id = sqlc.arg(product_id)
       AND (ci.variant_id IS NOT DISTINCT FROM sqlc.arg(variant_id))
   ),
   updated AS (
     UPDATE cart_items SET quantity = sqlc.arg(quantity)
     WHERE id = (SELECT id FROM existing_item)
-    RETURNING cart_id
+      AND EXISTS (SELECT 1 FROM stock_valid)
+    RETURNING id, cart_id, product_id, variant_id, quantity
   ),
   inserted AS (
     INSERT INTO cart_items (cart_id, product_id, variant_id, quantity)
@@ -66,19 +73,19 @@ WITH
     FROM user_cart uc
     CROSS JOIN stock_valid sv
     WHERE NOT EXISTS (SELECT 1 FROM existing_item)
-    RETURNING cart_id
+    RETURNING id, cart_id, product_id, variant_id, quantity
   ),
-  affected_cart AS (
-    SELECT cart_id FROM updated
+  results AS (
+    SELECT * FROM updated
     UNION ALL
-    SELECT cart_id FROM inserted
+    SELECT * FROM inserted
   )
-SELECT ci.id, ci.cart_id, ci.product_id, ci.variant_id, ci.quantity,
-       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku
-FROM cart_items ci
-JOIN products p ON p.id = ci.product_id
-JOIN variants v ON v.id = ci.variant_id
-WHERE ci.cart_id = (SELECT cart_id FROM affected_cart LIMIT 1);
+SELECT r.id, r.cart_id, r.product_id, r.variant_id, r.quantity,
+       p.name, p.slug, p.base_price, p.sale_price, p.media, v.stock, v.sku as variant_sku, v.name as variant_name, v.images as variant_images,
+       v.price as variant_price, v.sale_price as variant_sale_price
+FROM results r
+JOIN products p ON p.id = r.product_id
+JOIN variants v ON v.id = r.variant_id;
 
 
 
@@ -88,14 +95,15 @@ DELETE FROM cart_items ci
 USING carts c
 WHERE ci.cart_id = c.id
   AND c.user_id = $1
-  AND ci.product_id = $2;
+  AND ci.product_id = $2
+  AND ci.variant_id = $3;
 
 -- name: ClearCart :exec
 DELETE FROM cart_items WHERE cart_id = $1;
 
 -- name: CreateOrder :one
-INSERT INTO orders (user_id, status, total_amount, shipping_address, payment_method, payment_status, paid_amount, payment_details, is_preorder)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO orders (user_id, status, total_amount, shipping_fee, shipping_address, payment_method, payment_status, paid_amount, payment_details, is_preorder)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetOrderByID :one
