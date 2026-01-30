@@ -1,0 +1,16 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    # Run every 14 minutes to beat the 15-minute inactivity timeout
+    - cron: '*/14 * * * *'
+  workflow_dispatch: # Allow manual trigger via UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend
+        run: |
+          # Replace with your actual Render URL
+          curl -I https://rokomferi-backend.onrender.com/health || echo "Ping failed"
