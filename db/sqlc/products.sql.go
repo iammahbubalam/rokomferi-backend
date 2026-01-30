@@ -88,8 +88,8 @@ AND ($2::boolean IS NULL OR p.is_active = $2)
 `
 
 type CountProductsWithCategoryFilterParams struct {
-	Slug     string `json:"slug"`
-	IsActive *bool  `json:"is_active"`
+	Slug     *string `json:"slug"`
+	IsActive *bool   `json:"is_active"`
 }
 
 func (q *Queries) CountProductsWithCategoryFilter(ctx context.Context, arg CountProductsWithCategoryFilterParams) (int64, error) {
@@ -555,10 +555,10 @@ LIMIT $4 OFFSET $3
 `
 
 type GetProductsWithCategoryFilterParams struct {
-	Slug     string `json:"slug"`
-	IsActive *bool  `json:"is_active"`
-	Offset   int32  `json:"offset"`
-	Limit    int32  `json:"limit"`
+	Slug     *string `json:"slug"`
+	IsActive *bool   `json:"is_active"`
+	Offset   int32   `json:"offset"`
+	Limit    int32   `json:"limit"`
 }
 
 func (q *Queries) GetProductsWithCategoryFilter(ctx context.Context, arg GetProductsWithCategoryFilterParams) ([]Product, error) {

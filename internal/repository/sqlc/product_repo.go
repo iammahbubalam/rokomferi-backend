@@ -156,8 +156,8 @@ func sqlcCategoryToDomain(c sqlc.Category) domain.Category {
 	}
 	return domain.Category{
 		ID:              uuidToString(c.ID),
-		Name:            c.Name,
-		Slug:            c.Slug,
+		Name:            ptrStrToStr(c.Name),
+		Slug:            ptrStrToStr(c.Slug),
 		ParentID:        parentID,
 		OrderIndex:      int(c.OrderIndex),
 		Icon:            ptrString(c.Icon),
@@ -306,7 +306,7 @@ func (r *productRepository) getChildrenRecursive(ctx context.Context, parentID p
 }
 
 func (r *productRepository) GetCategoryBySlug(ctx context.Context, slug string) (*domain.Category, error) {
-	c, err := r.queries.GetCategoryBySlug(ctx, slug)
+	c, err := r.queries.GetCategoryBySlug(ctx, &slug)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			return nil, nil
@@ -327,7 +327,7 @@ func (r *productRepository) GetCategoriesFlat(ctx context.Context, isActive *boo
 	result := make([]domain.Category, 0, len(cats))
 	for _, c := range cats {
 		// Skip empty/invalid categories
-		if c.Name == "" {
+		if c.Name == nil || *c.Name == "" {
 			continue
 		}
 		result = append(result, sqlcCategoryToDomain(c))
@@ -342,8 +342,8 @@ func (r *productRepository) CreateCategory(ctx context.Context, category *domain
 	}
 
 	created, err := r.queries.CreateCategory(ctx, sqlc.CreateCategoryParams{
-		Name:            category.Name,
-		Slug:            category.Slug,
+		Name:            strPtr(category.Name),
+		Slug:            strPtr(category.Slug),
 		ParentID:        parentID,
 		OrderIndex:      int32(category.OrderIndex),
 		Icon:            strPtr(category.Icon),
@@ -370,8 +370,8 @@ func (r *productRepository) UpdateCategory(ctx context.Context, category *domain
 
 	_, err := r.queries.UpdateCategory(ctx, sqlc.UpdateCategoryParams{
 		ID:              stringToUUID(category.ID),
-		Name:            category.Name,
-		Slug:            category.Slug,
+		Name:            strPtr(category.Name),
+		Slug:            strPtr(category.Slug),
 		ParentID:        parentID,
 		OrderIndex:      int32(category.OrderIndex),
 		Icon:            strPtr(category.Icon),
@@ -585,7 +585,7 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 	} else if filter.CategorySlug != "" {
 		// Priority 2: Category filter
 		products, err = r.queries.GetProductsWithCategoryFilter(ctx, sqlc.GetProductsWithCategoryFilterParams{
-			Slug:     filter.CategorySlug,
+			Slug:     strPtr(filter.CategorySlug),
 			IsActive: filter.IsActive,
 			Limit:    limit,
 			Offset:   int32(filter.Offset),
@@ -595,7 +595,7 @@ func (r *productRepository) GetProducts(ctx context.Context, filter domain.Produ
 		}
 
 		count, err = r.queries.CountProductsWithCategoryFilter(ctx, sqlc.CountProductsWithCategoryFilterParams{
-			Slug:     filter.CategorySlug,
+			Slug:     strPtr(filter.CategorySlug),
 			IsActive: filter.IsActive,
 		})
 		if err != nil {

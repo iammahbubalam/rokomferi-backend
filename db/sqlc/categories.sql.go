@@ -18,8 +18,8 @@ RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_i
 `
 
 type CreateCategoryParams struct {
-	Name            string      `json:"name"`
-	Slug            string      `json:"slug"`
+	Name            *string     `json:"name"`
+	Slug            *string     `json:"slug"`
 	ParentID        pgtype.UUID `json:"parent_id"`
 	OrderIndex      int32       `json:"order_index"`
 	Icon            *string     `json:"icon"`
@@ -323,7 +323,7 @@ const getCategoryBySlug = `-- name: GetCategoryBySlug :one
 SELECT id, name, slug, parent_id, order_index, icon, image, is_active, show_in_nav, meta_title, meta_description, keywords, is_featured, og_image, created_at, updated_at FROM categories WHERE slug = $1
 `
 
-func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category, error) {
+func (q *Queries) GetCategoryBySlug(ctx context.Context, slug *string) (Category, error) {
 	row := q.db.QueryRow(ctx, getCategoryBySlug, slug)
 	var i Category
 	err := row.Scan(
@@ -439,8 +439,8 @@ RETURNING id, name, slug, parent_id, order_index, icon, image, is_active, show_i
 
 type UpdateCategoryParams struct {
 	ID              pgtype.UUID `json:"id"`
-	Name            string      `json:"name"`
-	Slug            string      `json:"slug"`
+	Name            *string     `json:"name"`
+	Slug            *string     `json:"slug"`
 	ParentID        pgtype.UUID `json:"parent_id"`
 	OrderIndex      int32       `json:"order_index"`
 	Icon            *string     `json:"icon"`

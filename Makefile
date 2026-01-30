@@ -2,11 +2,16 @@
 # Rokomferi Backend Makefile
 # ==========================================
 
-# Load environment variables from .env
-include .env
-export
+# Default env file
+ENV_FILE ?= .env
 
-# Database URL (uses DB_DSN from .env)
+# Load environment variables from the specified file
+ifneq (,$(wildcard $(ENV_FILE)))
+    include $(ENV_FILE)
+    export
+endif
+
+# Database URL (uses DB_DSN from loaded env)
 DB_URL = $(DB_DSN)
 
 # ==========================================
@@ -14,7 +19,17 @@ DB_URL = $(DB_DSN)
 # ==========================================
 
 run:
-	go run cmd/api/main.go
+	CONFIG_FILE=$(ENV_FILE) go run cmd/api/main.go
+
+# Production Run (Shortcut)
+prod:
+	$(MAKE) run ENV_FILE=.env.prod
+
+# Development Run (Shortcut)
+# Note: 'dev' previously ran tidy & sqlc. We keep that behavior but force .env.dev
+dev:
+	$(MAKE) tidy sqlc
+	$(MAKE) run ENV_FILE=.env.dev
 
 build:
 	go build -o bin/api cmd/api/main.go
@@ -32,8 +47,20 @@ test:
 migrateup:
 	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" up
 
+migrateup-dev:
+	$(MAKE) migrateup ENV_FILE=.env.dev
+
+migrateup-prod:
+	$(MAKE) migrateup ENV_FILE=.env.prod
+
 migratedown:
 	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" down 1
+
+migratedown-dev:
+	$(MAKE) migratedown ENV_FILE=.env.dev
+
+migratedown-prod:
+	$(MAKE) migratedown ENV_FILE=.env.prod
 
 migrateforce:
 	@read -p "Enter version to force: " version; \
@@ -41,6 +68,12 @@ migrateforce:
 
 migratestatus:
 	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" version
+
+migratestatus-dev:
+	$(MAKE) migratestatus ENV_FILE=.env.dev
+
+migratestatus-prod:
+	$(MAKE) migratestatus ENV_FILE=.env.prod
 
 migratecreate:
 	@read -p "Enter migration name: " name; \
@@ -56,11 +89,7 @@ sqlc:
 generate: sqlc
 	@echo "Code generation complete."
 
-# ==========================================
-# Development Helpers
-# ==========================================
 
-dev: tidy sqlc run
 
 lint:
 	golangci-lint run ./...

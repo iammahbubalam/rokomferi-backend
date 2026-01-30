@@ -43,9 +43,21 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	// Load .env file if it exists (mainly for local dev)
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found or error loading it, relying on system env vars")
+	// 1. Check if a specific config file is requested via env var
+	configFile := os.Getenv("CONFIG_FILE")
+	if configFile != "" {
+		if err := godotenv.Load(configFile); err != nil {
+			log.Printf("Warning: Failed to load config file '%s': %v", configFile, err)
+		} else {
+			log.Printf("Loaded configuration from %s", configFile)
+		}
+	} else {
+		// 2. Default fallback: Try loading .env (standard local dev)
+		// We don't error here because in pure docker/prod envs, .env might not exist,
+		// and we rely on system env vars.
+		if err := godotenv.Load(); err != nil {
+			log.Println("No .env file found or error loading it, relying on system env vars")
+		}
 	}
 
 	cfg := &Config{

@@ -16,7 +16,7 @@ SELECT slug, updated_at FROM categories WHERE is_active = true ORDER BY updated_
 `
 
 type ListCategorySlugsRow struct {
-	Slug      string           `json:"slug"`
+	Slug      *string          `json:"slug"`
 	UpdatedAt pgtype.Timestamp `json:"updated_at"`
 }
 

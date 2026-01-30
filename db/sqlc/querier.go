@@ -71,7 +71,7 @@ type Querier interface {
 	GetCategoriesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Category, error)
 	GetCategoriesFlat(ctx context.Context, isActive *bool) ([]Category, error)
 	GetCategoryByID(ctx context.Context, id pgtype.UUID) (Category, error)
-	GetCategoryBySlug(ctx context.Context, slug string) (Category, error)
+	GetCategoryBySlug(ctx context.Context, slug *string) (Category, error)
 	GetCategoryIDsForProduct(ctx context.Context, productID pgtype.UUID) ([]pgtype.UUID, error)
 	GetCategoryIDsForProducts(ctx context.Context, dollar_1 []pgtype.UUID) ([]ProductCategory, error)
 	GetChildCategories(ctx context.Context, parentID pgtype.UUID) ([]Category, error)
