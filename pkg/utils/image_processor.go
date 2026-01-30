@@ -3,7 +3,9 @@ package utils
 import (
 	"bytes"
 	"image"
+	_ "image/gif" // Register GIF decoder
 	"image/jpeg"
+	_ "image/png" // Register PNG decoder
 	"log"
 	"mime/multipart"
 

@@ -40,7 +40,9 @@ func NewR2Storage(ctx context.Context, accountId, accessKey, secretKey, bucketNa
 		return nil, err
 	}
 
-	client := s3.NewFromConfig(cfg)
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
+	})
 
 	return &R2Storage{
 		client:        client,
