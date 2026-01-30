@@ -57,6 +57,7 @@ func RequestLogger(next http.Handler) http.Handler {
 			Int("status", wrapped.statusCode).
 			Dur("duration_ms", duration).
 			Str("ip", getClientIP(r)).
+			Str("origin", r.Header.Get("Origin")).
 			Str("user_agent", r.UserAgent()).
 			Str("user_id", userID).
 			Msg("HTTP")
