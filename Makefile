@@ -30,21 +30,21 @@ test:
 # ==========================================
 
 migrateup:
-	migrate -path db/migrations -database "$(DB_URL)" up
+	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" up
 
 migratedown:
-	migrate -path db/migrations -database "$(DB_URL)" down 1
+	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" down 1
 
 migrateforce:
 	@read -p "Enter version to force: " version; \
-	migrate -path db/migrations -database "$(DB_URL)" force $$version
+	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" force $$version
 
 migratestatus:
-	migrate -path db/migrations -database "$(DB_URL)" version
+	$(HOME)/go/bin/migrate -path db/migrations -database "$(DB_URL)" version
 
 migratecreate:
 	@read -p "Enter migration name: " name; \
-	migrate create -ext sql -dir db/migrations -seq $$name
+	$(HOME)/go/bin/migrate create -ext sql -dir db/migrations -seq $$name
 
 # ==========================================
 # Code Generation

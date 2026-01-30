@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"mime/multipart"
@@ -52,7 +53,7 @@ func NewR2Storage(ctx context.Context, accountId, accessKey, secretKey, bucketNa
 func (s *R2Storage) UploadFile(ctx context.Context, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
 	// Generate unique filename
 	ext := filepath.Ext(fileHeader.Filename)
-	filename := fmt.Sprintf("fast-shopping/%s%s", utils.GenerateUUID(), ext) // Organized in folder
+	filename := fmt.Sprintf("uploads/%s%s", utils.GenerateUUID(), ext) // Organized in folder
 
 	// Create context with upload timeout
 	uploadCtx, cancel := context.WithTimeout(ctx, s.uploadTimeout)
@@ -70,5 +71,42 @@ func (s *R2Storage) UploadFile(ctx context.Context, file multipart.File, fileHea
 	}
 
 	// Return Public URL
+	return fmt.Sprintf("%s/%s", s.publicURL, filename), nil
+}
+
+// UploadBuffer uploads a byte slice as a file (used for processed images)
+func (s *R2Storage) UploadBuffer(ctx context.Context, data []byte, contentType string) (string, error) {
+	// 1. Determine Extension from Content-Type
+	ext := ".bin"
+	switch contentType {
+	case "image/webp":
+		ext = ".webp"
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/png":
+		ext = ".png"
+	}
+
+	// 2. Generate Filename
+	filename := fmt.Sprintf("uploads/%s%s", utils.GenerateUUID(), ext)
+
+	// 3. Create Reader
+	reader := bytes.NewReader(data)
+
+	// 4. Create context
+	uploadCtx, cancel := context.WithTimeout(ctx, s.uploadTimeout)
+	defer cancel()
+
+	// 5. Upload
+	_, err := s.client.PutObject(uploadCtx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucketName),
+		Key:         aws.String(filename),
+		Body:        reader,
+		ContentType: aws.String(contentType),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to upload buffer to R2: %w", err)
+	}
+
 	return fmt.Sprintf("%s/%s", s.publicURL, filename), nil
 }

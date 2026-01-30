@@ -69,8 +69,16 @@ func (h *UploadHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Upload to R2 with context propagation
-	url, err := h.storage.UploadFile(r.Context(), file, header)
+	// 5. Process Image (Resize + WebP)
+	processedData, newContentType, err := utils.ProcessImage(file, header.Filename)
+	if err != nil {
+		log.Printf("Image Processing Error: %v", err)
+		utils.WriteError(w, http.StatusInternalServerError, "Failed to process image")
+		return
+	}
+
+	// 6. Upload Processed Buffer to R2
+	url, err := h.storage.UploadBuffer(r.Context(), processedData, newContentType)
 	if err != nil {
 		log.Printf("R2 Upload Error: %v", err)
 		utils.WriteError(w, http.StatusInternalServerError, "Failed to upload file")

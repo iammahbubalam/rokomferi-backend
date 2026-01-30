@@ -1,29 +1,25 @@
--- Drop triggers
-DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
-DROP TRIGGER IF EXISTS update_carts_updated_at ON carts;
-DROP TRIGGER IF EXISTS update_collections_updated_at ON collections;
-DROP TRIGGER IF EXISTS update_products_updated_at ON products;
-DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+DROP TABLE IF EXISTS "wishlist_items" CASCADE;
+DROP TABLE IF EXISTS "wishlists" CASCADE;
+DROP TABLE IF EXISTS "variants" CASCADE;
+DROP TABLE IF EXISTS "users" CASCADE;
+DROP TABLE IF EXISTS "shipping_zones" CASCADE;
+DROP TABLE IF EXISTS "reviews" CASCADE;
+DROP TABLE IF EXISTS "refunds" CASCADE;
+DROP TABLE IF EXISTS "refresh_tokens" CASCADE;
+DROP TABLE IF EXISTS "product_collections" CASCADE;
+DROP TABLE IF EXISTS "product_categories" CASCADE;
+DROP TABLE IF EXISTS "products" CASCADE;
+DROP TABLE IF EXISTS "orders" CASCADE;
+DROP TABLE IF EXISTS "order_items" CASCADE;
+DROP TABLE IF EXISTS "order_history" CASCADE;
+DROP TABLE IF EXISTS "inventory_logs" CASCADE;
+DROP TABLE IF EXISTS "daily_sales_stats" CASCADE;
+DROP TABLE IF EXISTS "coupons" CASCADE;
+DROP TABLE IF EXISTS "content_blocks" CASCADE;
+DROP TABLE IF EXISTS "collections" CASCADE;
+DROP TABLE IF EXISTS "categories" CASCADE;
+DROP TABLE IF EXISTS "carts" CASCADE;
+DROP TABLE IF EXISTS "cart_items" CASCADE;
+DROP TABLE IF EXISTS "addresses" CASCADE;
 
--- Drop function
-DROP FUNCTION IF EXISTS update_updated_at_column();
 
--- Drop tables in reverse order to respect foreign key constraints
-DROP TABLE IF EXISTS order_items;
-DROP TABLE IF EXISTS orders;
-DROP TABLE IF EXISTS cart_items;
-DROP TABLE IF EXISTS carts;
-DROP TABLE IF EXISTS reviews;
-DROP TABLE IF EXISTS inventory_logs;
-DROP TABLE IF EXISTS variants;
-DROP TABLE IF EXISTS product_collections;
-DROP TABLE IF EXISTS product_categories;
-DROP TABLE IF EXISTS products;
-DROP TABLE IF EXISTS collections;
-DROP TABLE IF EXISTS categories;
-DROP TABLE IF EXISTS refresh_tokens;
-DROP TABLE IF EXISTS addresses;
-DROP TABLE IF EXISTS users;
-
--- Drop extension
-DROP EXTENSION IF EXISTS "uuid-ossp";
