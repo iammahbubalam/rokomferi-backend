@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Port               string
 	Env                string
+	LogLevel           string
 	DBUrl              string
 	GoogleClientID     string
 	JWTSecret          string
@@ -63,6 +64,7 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		Port:               getEnv("PORT", "8080"),
 		Env:                getEnv("ENV", "development"),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		DBUrl:              getEnv("DB_DSN", ""),
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),

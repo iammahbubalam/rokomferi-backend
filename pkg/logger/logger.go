@@ -16,7 +16,7 @@ var log zerolog.Logger
 type ctxKey struct{}
 
 // Init initializes the global logger
-func Init(env string) {
+func Init(env string, logLevel string) {
 	// Set time format
 	zerolog.TimeFieldFormat = time.RFC3339
 
@@ -30,11 +30,23 @@ func Init(env string) {
 			TimeFormat: "15:04:05",
 			NoColor:    false,
 		}
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else {
-		// JSON output for production
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
+
+	// Parse log level
+	var level zerolog.Level
+	switch logLevel {
+	case "debug":
+		level = zerolog.DebugLevel
+	case "info":
+		level = zerolog.InfoLevel
+	case "warn", "warning":
+		level = zerolog.WarnLevel
+	case "error":
+		level = zerolog.ErrorLevel
+	default:
+		level = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(level)
 
 	log = zerolog.New(output).
 		With().

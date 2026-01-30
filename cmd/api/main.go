@@ -26,7 +26,7 @@ func main() {
 	utils.SetSecret(cfg.JWTSecret)
 
 	// Initialize Logger
-	logger.Init("development") // Change to "production" in prod env
+	logger.Init(cfg.Env, cfg.LogLevel)
 	log := logger.Get()
 
 	// Initialize Database with pgx/sqlc
