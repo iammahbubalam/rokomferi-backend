@@ -41,6 +41,11 @@ type Config struct {
 	R2UploadTimeout time.Duration
 	// Business Rules
 	MaxCartQuantity int
+
+	// Marketing / Analytics (L9)
+	FacebookPixelID     string
+	FacebookAccessToken string
+	FacebookAPIVersion  string
 }
 
 func LoadConfig() *Config {
@@ -97,6 +102,11 @@ func LoadConfig() *Config {
 
 		// Business rules: 1000 max cart quantity
 		MaxCartQuantity: getIntEnv("MAX_CART_QUANTITY", 1000),
+
+		// Marketing
+		FacebookPixelID:     getEnv("FACEBOOK_PIXEL_ID", ""),
+		FacebookAccessToken: getEnv("FACEBOOK_ACCESS_TOKEN", ""),
+		FacebookAPIVersion:  getEnv("FACEBOOK_API_VERSION", "v19.0"),
 	}
 
 	cfg.Validate()

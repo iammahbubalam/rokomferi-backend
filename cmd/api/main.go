@@ -10,6 +10,7 @@ import (
 	"rokomferi-backend/internal/delivery/http/middleware"
 	v1 "rokomferi-backend/internal/delivery/http/v1"
 	"rokomferi-backend/internal/infrastructure/cache"
+	"rokomferi-backend/internal/infrastructure/facebook"
 	sqlcrepo "rokomferi-backend/internal/repository/sqlc"
 	"rokomferi-backend/internal/usecase"
 	"rokomferi-backend/pkg/logger"
@@ -87,8 +88,11 @@ func main() {
 	// Admin Catalog Handlers
 	adminCatalogHandler := v1.NewAdminCatalogHandler(catalogUC)
 
+	// Facebook CAPI Client (Marketing / Analytics)
+	capiClient := facebook.NewCAPIClient(cfg.FacebookPixelID, cfg.FacebookAccessToken, cfg.FacebookAPIVersion)
+
 	// Order Module
-	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, configRepo, couponRepo, txManager)
+	orderUC := usecase.NewOrderUsecase(orderRepo, productRepo, configRepo, couponRepo, txManager, capiClient)
 	orderHandler := v1.NewOrderHandler(orderUC, cfg.MaxCartQuantity)
 	adminOrderHandler := v1.NewAdminOrderHandler(orderUC)
 

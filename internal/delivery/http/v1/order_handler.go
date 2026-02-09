@@ -168,6 +168,21 @@ func (h *OrderHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// L9: Extract Identity Markers for high CAPI IMQ
+	req.IPAddress = r.RemoteAddr
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		req.IPAddress = strings.Split(forwarded, ",")[0]
+	}
+	req.UserAgent = r.Header.Get("User-Agent")
+
+	// Extract Facebook Cookies
+	if fbp, err := r.Cookie("_fbp"); err == nil {
+		req.FBP = fbp.Value
+	}
+	if fbc, err := r.Cookie("_fbc"); err == nil {
+		req.FBC = fbc.Value
+	}
+
 	order, err := h.orderUC.Checkout(r.Context(), user.ID, req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

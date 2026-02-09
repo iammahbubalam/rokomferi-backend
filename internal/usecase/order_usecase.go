@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"rokomferi-backend/internal/domain"
+	"rokomferi-backend/internal/infrastructure/facebook"
 	"rokomferi-backend/pkg/utils"
 )
 
@@ -14,15 +15,17 @@ type OrderUsecase struct {
 	configRepo  domain.ConfigRepository
 	couponRepo  domain.CouponRepository
 	txManager   domain.TransactionManager
+	capiClient  *facebook.CAPIClient
 }
 
-func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, configRepo domain.ConfigRepository, cRepo domain.CouponRepository, txManager domain.TransactionManager) *OrderUsecase {
+func NewOrderUsecase(repo domain.OrderRepository, pRepo domain.ProductRepository, configRepo domain.ConfigRepository, cRepo domain.CouponRepository, txManager domain.TransactionManager, capiClient *facebook.CAPIClient) *OrderUsecase {
 	return &OrderUsecase{
 		orderRepo:   repo,
 		productRepo: pRepo,
 		configRepo:  configRepo,
 		couponRepo:  cRepo,
 		txManager:   txManager,
+		capiClient:  capiClient,
 	}
 }
 
@@ -221,6 +224,11 @@ type CheckoutReq struct {
 	PaymentTrxID    string       `json:"paymentTrxId,omitempty"`
 	PaymentProvider string       `json:"paymentProvider,omitempty"`
 	PaymentPhone    string       `json:"paymentPhone,omitempty"`
+	// Tracking Information
+	FBP       string `json:"fbp"`
+	FBC       string `json:"fbc"`
+	IPAddress string `json:"ipAddress"`
+	UserAgent string `json:"userAgent"`
 }
 
 // ApplyCouponResp represents the result of applying a coupon
@@ -463,6 +471,59 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 
 	if err != nil {
 		return nil, err
+	}
+
+	// L9 Analytics: Send Purchase event to Facebook CAPI (async, non-blocking)
+	if u.capiClient != nil {
+		var contentItems []facebook.ContentItem
+		for _, item := range order.Items {
+			contentItems = append(contentItems, facebook.ContentItem{
+				ID:       item.ProductID,
+				Quantity: item.Quantity,
+				Price:    item.Price,
+			})
+		}
+
+		// Build UserData from order context for high IMQ (Identity Match Quality)
+		userData := facebook.UserData{
+			Country:    "BD",
+			ClientIP:   req.IPAddress,
+			UserAgent:  req.UserAgent,
+			FBP:        req.FBP,
+			FBC:        req.FBC,
+			ExternalID: order.UserID,
+		}
+		// Extract PII and Location from shipping address
+		if email, ok := order.ShippingAddress["email"].(string); ok && email != "" {
+			userData.Email = email
+		}
+		if phone, ok := order.ShippingAddress["phone"].(string); ok && phone != "" {
+			userData.Phone = phone
+		}
+		if fname, ok := order.ShippingAddress["firstName"].(string); ok && fname != "" {
+			userData.FirstName = fname
+		}
+		if lname, ok := order.ShippingAddress["lastName"].(string); ok && lname != "" {
+			userData.LastName = lname
+		}
+		if city, ok := order.ShippingAddress["district"].(string); ok && city != "" {
+			userData.City = city
+		}
+		if state, ok := order.ShippingAddress["division"].(string); ok && state != "" {
+			userData.State = state
+		}
+		if zip, ok := order.ShippingAddress["zip"].(string); ok && zip != "" {
+			userData.Zip = zip
+		}
+
+		u.capiClient.SendPurchaseEvent(
+			order.ID,
+			order.TotalAmount,
+			"BDT",
+			contentItems,
+			userData,
+			order.ID, // Use order ID as event_id for deduplication
+		)
 	}
 
 	return order, nil
