@@ -38,6 +38,13 @@ func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Pro
 	if len(product.Variants) == 0 {
 		// Valid case: standard product, repo will create Master Variant
 	}
+	// 3. Validate Pricing (L9 Data Integrity)
+	if product.SalePrice != nil && *product.SalePrice > 0 {
+		if *product.SalePrice >= product.BasePrice {
+			return fmt.Errorf("sale price must be less than base price")
+		}
+	}
+
 	product.CreatedAt = time.Now()
 	product.UpdatedAt = time.Now()
 	product.IsActive = true
@@ -47,6 +54,13 @@ func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Pro
 }
 
 func (uc *CatalogUsecase) UpdateProduct(ctx context.Context, product *domain.Product) error {
+	// L9: Validate Pricing (Data Integrity)
+	if product.SalePrice != nil && *product.SalePrice > 0 {
+		if *product.SalePrice >= product.BasePrice {
+			return fmt.Errorf("sale price must be less than base price")
+		}
+	}
+
 	product.UpdatedAt = time.Now()
 
 	// L9: Detect and Delete Removed Images (Cleanup Orphans)
