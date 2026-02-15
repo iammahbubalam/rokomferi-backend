@@ -112,3 +112,40 @@ func (s *R2Storage) UploadBuffer(ctx context.Context, data []byte, contentType s
 
 	return fmt.Sprintf("%s/%s", s.publicURL, filename), nil
 }
+
+// DeleteFile deletes a file from R2/S3 by its full URL
+func (s *R2Storage) DeleteFile(ctx context.Context, fileURL string) error {
+	// 1. Extract Key from URL
+	// URL format: https://pub-xxx.r2.dev/uploads/filename.webp
+	// Key format: uploads/filename.webp
+	// Simple strategy: Split by last occurrence of publicUrl
+	// If the URL doesn't contain publicURL, assume it might be a relative path or handle gracefully
+
+	var key string
+	if strings.HasPrefix(fileURL, s.publicURL) {
+		key = strings.TrimPrefix(fileURL, s.publicURL)
+		key = strings.TrimPrefix(key, "/") // Remove leading slash
+	} else {
+		// Fallback: assume the last part is the key or it's a relative path
+		// If it doesn't match our domain, strictly we might not want to delete it,
+		// but let's assume valid key if passed here.
+		// Safe bet: just return if it doesn't match our host to avoid deleting "other" things?
+		// For now, let's assume the caller passes a valid URL that belongs to us.
+		return fmt.Errorf("invalid file URL: domain mismatch")
+	}
+
+	if key == "" {
+		return fmt.Errorf("invalid file key derived from URL")
+	}
+
+	// 2. Delete from S3
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete file from R2: %w", err)
+	}
+
+	return nil
+}

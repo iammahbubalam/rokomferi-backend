@@ -23,20 +23,20 @@ func ProcessImage(file multipart.File, filename string) ([]byte, string, error) 
 	}
 	log.Printf("Processing image: %s (format: %s)", filename, format)
 
-	// 2. Resize if too large (Max Width 2000px)
+	// 2. Resize if too large (Max Width 2560px - L9 Standard)
 	bounds := img.Bounds()
-	if bounds.Dx() > 2000 {
-		img = imaging.Resize(img, 2000, 0, imaging.Lanczos)
+	if bounds.Dx() > 2560 {
+		img = imaging.Resize(img, 2560, 0, imaging.Lanczos)
 	}
 
 	// 3. Prepare Buffer
 	var buf bytes.Buffer
 
 	// 4. Encode as WebP
-	// Quality: 85 is excellent sweet spot. Lossless: false.
+	// Quality: 90 is L9 Standard for maximum detail retention.
 	err = webp.Encode(&buf, img, &webp.Options{
 		Lossless: false,
-		Quality:  85,
+		Quality:  90,
 	})
 	if err != nil {
 		// If WebP fails, fallback to JPEG

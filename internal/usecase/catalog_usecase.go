@@ -6,6 +6,7 @@ import (
 	"rokomferi-backend/config"
 	"rokomferi-backend/internal/domain"
 	"rokomferi-backend/pkg/cache"
+	"rokomferi-backend/pkg/storage"
 	"rokomferi-backend/pkg/utils"
 	"time"
 )
@@ -14,14 +15,16 @@ type CatalogUsecase struct {
 	repo      domain.ProductRepository
 	orderRepo domain.OrderRepository
 	cache     cache.CacheService
+	storage   *storage.R2Storage
 	cfg       *config.Config
 }
 
-func NewCatalogUsecase(repo domain.ProductRepository, orderRepo domain.OrderRepository, cache cache.CacheService, cfg *config.Config) *CatalogUsecase {
+func NewCatalogUsecase(repo domain.ProductRepository, orderRepo domain.OrderRepository, cache cache.CacheService, storage *storage.R2Storage, cfg *config.Config) *CatalogUsecase {
 	return &CatalogUsecase{
 		repo:      repo,
 		orderRepo: orderRepo,
 		cache:     cache,
+		storage:   storage,
 		cfg:       cfg,
 	}
 }
@@ -45,6 +48,50 @@ func (uc *CatalogUsecase) CreateProduct(ctx context.Context, product *domain.Pro
 
 func (uc *CatalogUsecase) UpdateProduct(ctx context.Context, product *domain.Product) error {
 	product.UpdatedAt = time.Now()
+
+	// L9: Detect and Delete Removed Images (Cleanup Orphans)
+	// 1. Fetch existing product state
+	existing, err := uc.repo.GetProductByID(ctx, product.ID)
+	if err == nil && existing != nil {
+		// 2. Identify removed images from Main Product
+		newImages := make(map[string]bool)
+		for _, img := range product.Images {
+			newImages[img] = true
+		}
+		for _, oldImg := range existing.Images {
+			if !newImages[oldImg] && oldImg != "" {
+				// Old image is NOT in new list -> Delete it
+				_ = uc.storage.DeleteFile(ctx, oldImg)
+			}
+		}
+
+		// 3. Identify removed images from Variants
+		// This is tricky because variants might be added/removed/updated.
+		// Simplified strategy: Collect ALL current variant images, and compare against ALL new variant images.
+		// NOTE: This assumes images are unique to variants or shared logic handles it.
+		// For safety, we only delete if the image is NOT used in ANY new variant OR the main product.
+
+		// Re-build "Keep List" with ALL new images (Product + All Variants)
+		keepList := make(map[string]bool)
+		for _, img := range product.Images {
+			keepList[img] = true
+		}
+		for _, v := range product.Variants {
+			for _, img := range v.Images {
+				keepList[img] = true
+			}
+		}
+
+		// Check Old Variant Images
+		for _, v := range existing.Variants {
+			for _, oldImg := range v.Images {
+				if !keepList[oldImg] && oldImg != "" {
+					_ = uc.storage.DeleteFile(ctx, oldImg)
+				}
+			}
+		}
+	}
+
 	// Prevent slug update? Or allow re-generation? Let's allow simple update for now.
 	// Invalidate cache
 	uc.cache.Delete(fmt.Sprintf("product:slug:%s", product.Slug))
@@ -58,6 +105,25 @@ func (uc *CatalogUsecase) UpdateProductStatus(ctx context.Context, id string, is
 }
 
 func (uc *CatalogUsecase) DeleteProduct(ctx context.Context, id string) error {
+	// L9: Clean up R2 Images before deleting DB record
+	product, err := uc.repo.GetProductByID(ctx, id)
+	if err == nil && product != nil {
+		// Delete All Product Images (Main + Gallery are consolidated in Images)
+		for _, img := range product.Images {
+			if img != "" {
+				_ = uc.storage.DeleteFile(ctx, img)
+			}
+		}
+		// Delete Variant Images
+		for _, v := range product.Variants {
+			for _, img := range v.Images {
+				if img != "" {
+					_ = uc.storage.DeleteFile(ctx, img)
+				}
+			}
+		}
+	}
+
 	uc.invalidateStatsCache()
 	return uc.repo.DeleteProduct(ctx, id)
 }

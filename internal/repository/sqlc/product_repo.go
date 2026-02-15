@@ -1276,7 +1276,7 @@ func (r *productRepository) GetVariantList(ctx context.Context, filter domain.Va
 			ProductID:         uuidToString(row.ProductID),
 			Name:              row.Name,
 			Stock:             int(row.Stock),
-			SKU:               *strPtr(ptrStrToStr(row.Sku)),
+			SKU:               ptrStrToStr(row.Sku),
 			Price:             numericToFloat64Ptr(row.Price),
 			SalePrice:         numericToFloat64Ptr(row.SalePrice),
 			Weight:            numericToFloat64Ptr(row.Weight),
