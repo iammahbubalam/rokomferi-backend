@@ -3,9 +3,9 @@ package v1
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 	"valancis-backend/internal/domain"
 	"valancis-backend/pkg/cache"
-	"time"
 )
 
 type ConfigHandler struct {
