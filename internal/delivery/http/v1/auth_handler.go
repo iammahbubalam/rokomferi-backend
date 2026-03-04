@@ -46,8 +46,8 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    refreshToken,
 		Path:     "/", // Allows access for refresh endpoint
 		HttpOnly: true,
-		Secure:   true, // Should be true in production/https
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true, // Required for SameSite=None
+		SameSite: http.SameSiteNoneMode,
 		MaxAge:   7 * 24 * 60 * 60, // 7 days
 	})
 
