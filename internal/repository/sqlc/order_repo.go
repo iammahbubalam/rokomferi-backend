@@ -405,6 +405,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id string) (*domain.Order
 		Email:     row.Email,
 		FirstName: ptrString(row.FirstName),
 		LastName:  ptrString(row.LastName),
+		Avatar:    ptrString(row.Avatar),
 	}
 
 	return order, nil
@@ -493,6 +494,7 @@ func (r *orderRepository) GetAll(ctx context.Context, filter domain.OrderFilter)
 				Email:     o.Email,
 				FirstName: ptrString(o.FirstName),
 				LastName:  ptrString(o.LastName),
+				Avatar:    ptrString(o.Avatar),
 			},
 		}
 		if len(o.PaymentDetails) > 0 {
@@ -549,6 +551,13 @@ func (r *orderRepository) UpdatePaymentStatus(ctx context.Context, id, status st
 	return r.queries.UpdateOrderPaymentStatus(ctx, sqlc.UpdateOrderPaymentStatusParams{
 		ID:            stringToUUID(id),
 		PaymentStatus: strPtr(status),
+	})
+}
+
+func (r *orderRepository) UpdatePaidAmount(ctx context.Context, id string, amount float64) error {
+	return r.queries.UpdateOrderPaidAmount(ctx, sqlc.UpdateOrderPaidAmountParams{
+		ID:         stringToUUID(id),
+		PaidAmount: float64ToNumeric(amount),
 	})
 }
 

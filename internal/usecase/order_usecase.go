@@ -660,6 +660,9 @@ func (u *OrderUsecase) handleOrderStateSideEffects(ctx context.Context, order *d
 			if err := u.orderRepo.UpdatePaymentStatus(ctx, order.ID, domain.PaymentStatusPaid); err != nil {
 				return fmt.Errorf("failed to sync payment status to paid: %w", err)
 			}
+			if err := u.orderRepo.UpdatePaidAmount(ctx, order.ID, order.TotalAmount); err != nil {
+				return fmt.Errorf("failed to sync paid amount: %w", err)
+			}
 
 		case domain.SideEffectSyncPaymentRefund:
 			slog.Info("L9 Side-Effect: Syncing payment → refunded", "order_id", order.ID)

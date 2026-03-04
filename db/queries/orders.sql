@@ -109,7 +109,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: GetOrderByID :one
-SELECT o.*, u.email, u.first_name, u.last_name
+SELECT o.*, u.email, u.first_name, u.last_name, u.avatar
 FROM orders o
 JOIN users u ON u.id = o.user_id
 WHERE o.id = $1;
@@ -118,7 +118,7 @@ WHERE o.id = $1;
 SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC;
 
 -- name: GetAllOrders :many
-SELECT o.*, u.email, u.first_name, u.last_name
+SELECT o.*, u.email, u.first_name, u.last_name, u.avatar
 FROM orders o
 JOIN users u ON u.id = o.user_id
 WHERE 
@@ -190,3 +190,7 @@ FROM order_history oh
 LEFT JOIN users u ON u.id = oh.created_by
 WHERE oh.order_id = $1
 ORDER BY oh.created_at DESC;
+
+-- name: UpdateOrderPaidAmount :exec
+UPDATE orders SET paid_amount = $2 WHERE id = $1;
+

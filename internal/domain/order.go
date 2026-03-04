@@ -90,6 +90,7 @@ type OrderRepository interface {
 	GetAll(ctx context.Context, filter OrderFilter) ([]Order, int64, error)
 	UpdateStatus(ctx context.Context, id, status string) error
 	UpdatePaymentStatus(ctx context.Context, id, status string) error
+	UpdatePaidAmount(ctx context.Context, id string, amount float64) error
 
 	// Cart
 	GetCartByUserID(ctx context.Context, userID string) (*Cart, error)

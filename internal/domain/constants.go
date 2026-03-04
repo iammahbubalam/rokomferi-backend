@@ -125,6 +125,7 @@ var ValidTransitions = map[string][]string{
 	// ── Happy Path ─────────────────────────────────────────────────────────
 	OrderStatusPending: {
 		OrderStatusPendingVerification, // Admin starts verification
+		OrderStatusProcessing,          // Admin skips verification (e.g., COD direct confirm)
 		OrderStatusCancelled,           // Admin/System cancels
 		OrderStatusFake,                // Admin marks as fraud
 	},
@@ -143,15 +144,18 @@ var ValidTransitions = map[string][]string{
 		OrderStatusDelivered, // Courier confirms delivery
 		OrderStatusReturned,  // Failed delivery / customer refused
 		OrderStatusCancelled, // Shipment recalled / refused at door
+		OrderStatusFake,      // Fraud detected late
 	},
 	OrderStatusDelivered: {
 		OrderStatusPaid,     // COD collected / final payment confirmed
 		OrderStatusReturned, // Customer returns product
 		OrderStatusRefunded, // Money refunded post-delivery
+		OrderStatusFake,     // Adming marking as fake/scam
 	},
 	OrderStatusPaid: {
 		OrderStatusRefunded, // Post-payment refund
 		OrderStatusReturned, // Post-payment return
+		OrderStatusFake,     // Admin marking as fake
 	},
 
 	// ── Exceptional / Recovery ─────────────────────────────────────────────
@@ -204,8 +208,9 @@ var ValidPaymentTransitions = map[string][]string{
 		PaymentStatusFailed,       // Payment attempt failed
 	},
 	PaymentStatusPendingVerif: {
-		PaymentStatusPaid,   // Admin verifies payment
-		PaymentStatusFailed, // Admin rejects payment
+		PaymentStatusPaid,        // Admin verifies full payment
+		PaymentStatusPartialPaid, // Admin verifies pre-order deposit
+		PaymentStatusFailed,      // Admin rejects payment
 	},
 	PaymentStatusFailed: {
 		PaymentStatusPendingVerif, // Customer retries payment
@@ -232,7 +237,7 @@ var ValidPaymentTransitions = map[string][]string{
 
 const (
 	PaymentMethodCOD        = "cod"
-	PaymentMethodAdvance    = "advance" // Manual advance payment (bKash, Nagad — customer provides trxID)
+	PaymentMethodAdvance    = "mobile_banking" // Manual advance payment (bKash, Nagad — customer provides trxID)
 	PaymentMethodBKash      = "bkash"
 	PaymentMethodNagad      = "nagad"
 	PaymentMethodSSLCommerz = "sslcommerz" // SSLCommerz payment gateway
@@ -277,10 +282,10 @@ var StatusSideEffects = map[string][]SideEffect{
 type OrderType string
 
 const (
-	OrderTypeCOD        OrderType = "cod"         // Cash on Delivery
-	OrderTypeAdvance    OrderType = "advance"     // Advance payment via gateway
-	OrderTypePreorder   OrderType = "preorder"    // Pre-order with deposit
-	OrderTypePreorderND OrderType = "preorder_nd" // Pre-order with no deposit
+	OrderTypeCOD        OrderType = "cod"            // Cash on Delivery
+	OrderTypeAdvance    OrderType = "mobile_banking" // Advance payment via gateway/manual
+	OrderTypePreorder   OrderType = "preorder"       // Pre-order with deposit
+	OrderTypePreorderND OrderType = "preorder_nd"    // Pre-order with no deposit
 )
 
 // OrderTypeFlows maps each order type to its expected happy-path status sequence.

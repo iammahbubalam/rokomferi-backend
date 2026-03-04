@@ -152,6 +152,7 @@ type Querier interface {
 	UpdateCollection(ctx context.Context, arg UpdateCollectionParams) (Collection, error)
 	UpdateContentBlockSchedule(ctx context.Context, arg UpdateContentBlockScheduleParams) error
 	UpdateCoupon(ctx context.Context, arg UpdateCouponParams) error
+	UpdateOrderPaidAmount(ctx context.Context, arg UpdateOrderPaidAmountParams) error
 	UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderPaymentStatusParams) error
 	UpdateOrderRefundedAmount(ctx context.Context, arg UpdateOrderRefundedAmountParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) error

@@ -216,7 +216,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getAllOrders = `-- name: GetAllOrders :many
-SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, o.shipping_fee, u.email, u.first_name, u.last_name
+SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, o.shipping_fee, u.email, u.first_name, u.last_name, u.avatar
 FROM orders o
 JOIN users u ON u.id = o.user_id
 WHERE 
@@ -262,6 +262,7 @@ type GetAllOrdersRow struct {
 	Email           string           `json:"email"`
 	FirstName       *string          `json:"first_name"`
 	LastName        *string          `json:"last_name"`
+	Avatar          *string          `json:"avatar"`
 }
 
 func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]GetAllOrdersRow, error) {
@@ -299,6 +300,7 @@ func (q *Queries) GetAllOrders(ctx context.Context, arg GetAllOrdersParams) ([]G
 			&i.Email,
 			&i.FirstName,
 			&i.LastName,
+			&i.Avatar,
 		); err != nil {
 			return nil, err
 		}
@@ -502,7 +504,7 @@ func (q *Queries) GetCartWithItems(ctx context.Context, userID pgtype.UUID) ([]G
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, o.shipping_fee, u.email, u.first_name, u.last_name
+SELECT o.id, o.user_id, o.status, o.total_amount, o.shipping_address, o.payment_method, o.payment_status, o.created_at, o.updated_at, o.paid_amount, o.payment_details, o.is_preorder, o.refunded_amount, o.shipping_fee, u.email, u.first_name, u.last_name, u.avatar
 FROM orders o
 JOIN users u ON u.id = o.user_id
 WHERE o.id = $1
@@ -526,6 +528,7 @@ type GetOrderByIDRow struct {
 	Email           string           `json:"email"`
 	FirstName       *string          `json:"first_name"`
 	LastName        *string          `json:"last_name"`
+	Avatar          *string          `json:"avatar"`
 }
 
 func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (GetOrderByIDRow, error) {
@@ -549,6 +552,7 @@ func (q *Queries) GetOrderByID(ctx context.Context, id pgtype.UUID) (GetOrderByI
 		&i.Email,
 		&i.FirstName,
 		&i.LastName,
+		&i.Avatar,
 	)
 	return i, err
 }
@@ -719,6 +723,20 @@ func (q *Queries) HasPurchasedProduct(ctx context.Context, arg HasPurchasedProdu
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const updateOrderPaidAmount = `-- name: UpdateOrderPaidAmount :exec
+UPDATE orders SET paid_amount = $2 WHERE id = $1
+`
+
+type UpdateOrderPaidAmountParams struct {
+	ID         pgtype.UUID    `json:"id"`
+	PaidAmount pgtype.Numeric `json:"paid_amount"`
+}
+
+func (q *Queries) UpdateOrderPaidAmount(ctx context.Context, arg UpdateOrderPaidAmountParams) error {
+	_, err := q.db.Exec(ctx, updateOrderPaidAmount, arg.ID, arg.PaidAmount)
+	return err
 }
 
 const updateOrderPaymentStatus = `-- name: UpdateOrderPaymentStatus :exec
