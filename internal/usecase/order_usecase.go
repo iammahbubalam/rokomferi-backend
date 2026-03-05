@@ -482,6 +482,20 @@ func (u *OrderUsecase) Checkout(ctx context.Context, userID string, req Checkout
 				return err
 			}
 		}
+
+		// 6b. Create Initial History Entry
+		histReason := "Order placed successfully"
+		history := &domain.OrderHistory{
+			OrderID:        order.ID,
+			PreviousStatus: nil,
+			NewStatus:      order.Status,
+			Reason:         &histReason,
+			CreatedBy:      &order.UserID,
+		}
+		if err := u.orderRepo.CreateOrderHistory(txCtx, history); err != nil {
+			return fmt.Errorf("failed to record initial history: %w", err)
+		}
+
 		return nil
 	})
 
